@@ -4,8 +4,8 @@
  */
 
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
-import { z } from "zod";
-import type { AppConfig, AppEnv } from "./config-types";
+import { z } from "zod";  
+import type { AppConfig, AppEnv } from "./config-types.js";
 
 const AppConfigSchema = z.object({
   env: z.enum(["dev", "prod"]),

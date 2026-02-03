@@ -45,6 +45,9 @@ android/local.properties
 .DS_Store
 Thumbs.db
 
+# zip file
+backend/function.zip
+
 # Secrets & Keys
 *.pem
 *.key

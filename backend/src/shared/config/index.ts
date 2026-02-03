@@ -1,2 +1,2 @@
-export * from "./config-types";
-export * from "./config-cache";
+export * from "./config-types.js";
+export * from "./config-cache.js";

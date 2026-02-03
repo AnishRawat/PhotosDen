@@ -10,8 +10,8 @@ data "aws_iam_policy_document" "lambda_s3_access" {
       "s3:ListBucket"
     ]
     resources = [
-      "arn:aws:s3:::${var.project_name}-assets-${var.environment}",
-      "arn:aws:s3:::${var.project_name}-assets-${var.environment}/*"
+      "arn:aws:s3:::${var.project_name}-assets-${var.environment}-8860758571",
+      "arn:aws:s3:::${var.project_name}-assets-${var.environment}-8860758571/*"
     ]
   }
 }
@@ -58,12 +58,7 @@ resource "aws_iam_role_policy_attachment" "lambda_dynamodb_attach" {
   policy_arn = aws_iam_policy.lambda_dynamodb.arn
 }
 
-variable "project_name" { type = string }
-variable "environment" { type = string }
-variable "aws_region" { type = string }
 variable "lambda_role_name" {
   type    = string
   default = ""
 }
-
-data "aws_caller_identity" "current" {}

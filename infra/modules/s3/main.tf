@@ -2,7 +2,7 @@ variable "project_name" { type = string }
 variable "environment" { type = string }
 
 resource "aws_s3_bucket" "assets" {
-  bucket = "${var.project_name}-assets-${var.environment}"
+  bucket = "${var.project_name}-assets-${var.environment}-8860758571"
 
   force_destroy = var.environment == "dev" ? true : false
 }

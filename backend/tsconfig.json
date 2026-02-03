@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist",
     "baseUrl": "./src",
     "paths": {
       "@domain/*": ["domain/*"],
@@ -11,7 +12,6 @@
       "@interfaces/*": ["interfaces/*"],
       "@shared/*": ["shared/*"]
     },
-    "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

@@ -1,0 +1,1085 @@
+openapi: 3.0.3
+info:
+  title: PhotosDen
+  version: 1.0.0
+  description: Secure, serverless personal photo storage on AWS.
+servers:
+  - url: https://g2l2bkihl6.execute-api.ap-south-1.amazonaws.com/dev
+    description: Development Environment
+security:
+  - BearerAuth: []
+paths:
+  # --- Authentication ---
+  /auth/signup:
+    post:
+      summary: Register a new user
+      description: Registers a new user using Email or Phone.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupRequest"
+      responses:
+        "201":
+          description: Registered, verification code sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignupResponse"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+
+  /auth/login:
+    post:
+      summary: Login
+      description: Authenticate using Email/Phone and Password.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+
+  /auth/confirm:
+    post:
+      summary: Confirm registration
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmRequest"
+      responses:
+        "200":
+          description: Confirmed.
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+  /auth/resend-code:
+    post:
+      summary: Resend verification code
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier]
+              properties:
+                identifier: { type: string }
+      responses:
+        "200":
+          description: Code resent.
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+
+  /auth/password/forgot:
+    post:
+      summary: Forgot password
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier]
+              properties:
+                identifier: { type: string }
+      responses:
+        "200":
+          description: Reset code sent.
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+
+  /auth/password/reset:
+    post:
+      summary: Reset password
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, code, newPassword]
+              properties:
+                identifier: { type: string }
+                code: { type: string }
+                newPassword: { type: string }
+      responses:
+        "200":
+          description: Password reset.
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+
+  # --- Profile ---
+  /profile:
+    get:
+      summary: Get profile
+      tags: [Profile]
+      responses:
+        "200":
+          description: Profile data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: GET
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+    patch:
+      summary: Update profile
+      tags: [Profile]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profile updated.
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: PUT
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+
+  # --- Media: Uploads ---
+  /uploads:
+    post:
+      summary: Initiate batch upload
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+        responses:
+          default:
+            statusCode: "201"
+      responses:
+        "201":
+          description: Batch upload initiated
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadBatchResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    get:
+      summary: List uploads
+      x-amazon-apigateway-integration:
+        httpMethod: GET
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/NextToken"
+      responses:
+        "200":
+          description: List of uploads
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadListResponse"
+
+  /uploads/{uploadId}:
+    get:
+      summary: List photos in upload
+      x-amazon-apigateway-integration:
+        httpMethod: GET
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of photos in the specified upload
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoListResponse"
+
+  /uploads/{uploadId}/complete:
+    post:
+      summary: Finalize upload
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upload finalized
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /albums:
+    post:
+      summary: Create album
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+        responses:
+          default:
+            statusCode: "201"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlbumRequest"
+      responses:
+        "201":
+          description: Album created
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Album"
+
+  /albums/{albumId}:
+    get:
+      summary: Get album
+      x-amazon-apigateway-integration:
+        httpMethod: GET
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Album details
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Album"
+    delete:
+      summary: Soft delete album
+      x-amazon-apigateway-integration:
+        httpMethod: DELETE
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+        responses:
+          default:
+            statusCode: "204"
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Album soft deleted
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+
+  /albums/{albumId}/photos:
+    put:
+      summary: Update album photos
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAlbumPhotosRequest"
+      responses:
+        "200":
+          description: Album updated
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /photos/{photoId}:
+    delete:
+      summary: Soft delete photo
+      x-amazon-apigateway-integration:
+        httpMethod: DELETE
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+        responses:
+          default:
+            statusCode: "204"
+      parameters:
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Photo soft deleted
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+
+  /trash:
+    get:
+      summary: List trash
+      x-amazon-apigateway-integration:
+        httpMethod: GET
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/NextToken"
+      responses:
+        "200":
+          description: List of items in trash
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrashListResponse"
+
+  /trash/restore:
+    post:
+      summary: Restore items
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreItemsRequest"
+      responses:
+        "200":
+          description: Items restored
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /trash/{itemType}/{id}:
+    delete:
+      summary: Permanent purge
+      x-amazon-apigateway-integration:
+        httpMethod: DELETE
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+        responses:
+          default:
+            statusCode: "204"
+      parameters:
+        - name: itemType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [album, asset]
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Item permanently purged
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+
+  /shares:
+    post:
+      summary: Create share
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+        responses:
+          default:
+            statusCode: "201"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShareRequest"
+      responses:
+        "201":
+          description: Share link created
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareLink"
+
+  /shares/active:
+    get:
+      summary: List active shares
+      x-amazon-apigateway-integration:
+        httpMethod: GET
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/NextToken"
+      responses:
+        "200":
+          description: List of currently active share links
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareListResponse"
+
+  /shares/{id}/status:
+    put:
+      summary: Update share status
+      x-amazon-apigateway-integration:
+        httpMethod: PUT
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [active, paused, stopped]
+      responses:
+        "200":
+          description: Share status updated
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareLink"
+
+  /shares/{id}:
+    delete:
+      summary: Archive share history
+      x-amazon-apigateway-integration:
+        httpMethod: DELETE
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+        responses:
+          default:
+            statusCode: "204"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Share history archived
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+
+  /shares/{id}/visits:
+    get:
+      summary: Get share visits
+      x-amazon-apigateway-integration:
+        httpMethod: GET
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/NextToken"
+      responses:
+        "200":
+          description: Visit analytics for the share link
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitListResponse"
+
+  /share/{token}:
+    get:
+      summary: Public share access
+      x-amazon-apigateway-integration:
+        httpMethod: GET
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Shared content metadata
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicShareResponse"
+        "404":
+          description: Link not found, expired, or target deleted
+        "410":
+          description: Link target is in trash
+
+  /devtools/openai/generate-swagger-test:
+    post:
+      summary: Generate swagger test
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevtoolsTestRequest"
+      responses:
+        "200":
+          description: Generated test steps
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevtoolsTestResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Cognito User Pool Access Token
+      x-amazon-apigateway-authorizer:
+        type: "cognito_user_pools"
+        providerArns:
+          - "${cognito_user_pool_arn}"
+      x-amazon-apigateway-authtype: "cognito_user_pools"
+
+  headers:
+    X-Correlation-Id:
+      description: Unique ID for request tracing
+      schema:
+        type: string
+
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+    NextToken:
+      name: nextToken
+      in: query
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or body
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    # message:
+    #   type: string
+
+    # --- Auth & Profile ---
+    StandardResponse:
+      type: object
+      properties:
+        message: { type: string }
+    ErrorResponse:
+      type: object
+      properties:
+        message: { type: string }
+
+    SignupRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: { type: string, example: "rawatanish9811@gmail.com" }
+        password: { type: string, format: password, example: "Password123!" }
+
+    SignupResponse:
+      type: object
+      properties:
+        verificationRequired: { type: boolean }
+        userId: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: { type: string, example: "rawatanish9811@gmail.com" }
+        password: { type: string, format: password, example: "Password123!" }
+
+    LoginResponse:
+      type: object
+      properties:
+        idToken: { type: string }
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer }
+
+    ConfirmRequest:
+      type: object
+      required: [identifier, code]
+      properties:
+        identifier: { type: string }
+        code: { type: string }
+
+    UserProfile:
+      type: object
+      properties:
+        userId: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        emailVerified: { type: boolean }
+        phoneVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        email: { type: string }
+        phone: { type: string }
+        avatarUrl: { type: string }
+
+    # --- Media Management ---
+
+    Asset:
+      type: object
+      required: [uploadId, albumRefCount, isDeleted]
+      properties:
+        uploadId:
+          type: string
+        albumRefCount:
+          type: integer
+        isDeleted:
+          type: boolean
+        deletedAt:
+          type: string
+          format: date-time
+        purgeAt:
+          type: integer
+          description: Epoch seconds (TTL)
+        fileDetails:
+          type: object
+          properties:
+            original:
+              type: string
+            variants:
+              type: array
+              items:
+                type: object
+                properties:
+                  resolution:
+                    type: string
+                  s3Key:
+                    type: string
+
+    Album:
+      type: object
+      required: [title, isDeleted]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        isDeleted:
+          type: boolean
+        deletedAt:
+          type: string
+          format: date-time
+        purgeAt:
+          type: integer
+          description: Epoch seconds (TTL)
+
+    ShareLink:
+      type: object
+      required: [shareToken, status, targetType, targetId]
+      properties:
+        shareToken:
+          type: string
+        status:
+          type: string
+          enum: [active, paused, stopped]
+        targetType:
+          type: string
+          enum: [album, photo]
+        targetId:
+          type: string
+        archived:
+          type: boolean
+        accessCount:
+          type: integer
+        lastAccessedAt:
+          type: string
+          format: date-time
+        allowedRes:
+          type: array
+          items:
+            type: string
+        expiresAt:
+          type: integer
+          description: Optional epoch seconds (TTL)
+
+    VisitLog:
+      type: object
+      required: [visitedAt, ipHash, userAgent]
+      properties:
+        visitedAt:
+          type: string
+          format: date-time
+        ipHash:
+          type: string
+        userAgent:
+          type: string
+        purgeAt:
+          type: integer
+          description: visitedAt + 90 days (TTL)
+
+    DeviceAggregation:
+      type: object
+      required: [friendlyName, count]
+      properties:
+        friendlyName:
+          type: string
+        count:
+          type: integer
+
+    UploadBatchResponse:
+      type: object
+      properties:
+        uploadId:
+          type: string
+        presignedUrls:
+          type: array
+          items:
+            type: object
+            properties:
+              assetId:
+                type: string
+              url:
+                type: string
+
+    UploadListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              uploadId:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+        nextToken:
+          type: string
+
+    PhotoListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Asset"
+        nextToken:
+          type: string
+
+    TrashListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              itemType:
+                type: string
+                enum: [album, asset]
+              data:
+                oneOf:
+                  - $ref: "#/components/schemas/Asset"
+                  - $ref: "#/components/schemas/Album"
+        nextToken:
+          type: string
+
+    ShareListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareLink"
+        nextToken:
+          type: string
+
+    VisitListResponse:
+      type: object
+      required: [items, deviceAggregation]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisitLog"
+        deviceAggregation:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceAggregation"
+        nextToken:
+          type: string
+
+    PublicShareResponse:
+      type: object
+      required: [targetMetadata]
+      properties:
+        targetMetadata:
+          type: object
+          properties:
+            title:
+              type: string
+            itemCount:
+              type: integer
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              assetId:
+                type: string
+
+    CreateAlbumRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+
+    UpdateAlbumPhotosRequest:
+      type: object
+      properties:
+        add:
+          type: array
+          items:
+            type: string
+        remove:
+          type: array
+          items:
+            type: string
+
+    RestoreItemsRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              itemType:
+                type: string
+                enum: [album, asset]
+              id:
+                type: string
+
+    CreateShareRequest:
+      type: object
+      required: [targetType, targetId]
+      properties:
+        targetType:
+          type: string
+          enum: [album, photo]
+        targetId:
+          type: string
+        allowedRes:
+          type: array
+          items:
+            type: string
+        expiresAt:
+          type: integer
+
+    DevtoolsTestRequest:
+      type: object
+      required: [test_intent, target_endpoint]
+      properties:
+        test_intent:
+          type: string
+        target_endpoint:
+          type: string
+
+    DevtoolsTestResponse:
+      type: object
+      required: [intent, steps]
+      properties:
+        intent:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            required: [description, method, path, payload, curl_command]
+            properties:
+              description:
+                type: string
+              method:
+                type: string
+              path:
+                type: string
+              payload:
+                type: object
+              curl_command:
+                type: string

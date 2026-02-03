@@ -7,7 +7,8 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "rm -rf dist && tsc",
+    "package": "rm -f function.zip && npm ci && npm run build && rm -rf node_modules && npm ci --omit=dev && cd dist && zip -r ../function.zip . && cd .. && zip -r function.zip node_modules"
   },
   "keywords": [],
   "author": "",

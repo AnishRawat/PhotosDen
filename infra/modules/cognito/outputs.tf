@@ -5,3 +5,7 @@ output "user_pool_id" {
 output "client_id" {
   value = aws_cognito_user_pool_client.client.id
 }
+
+output "user_pool_arn" {
+  value = aws_cognito_user_pool.main.arn
+}

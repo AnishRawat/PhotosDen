@@ -1,6 +1,6 @@
-variable "project_name" { type = string }
-variable "environment" { type = string }
-variable "aws_region" { type = string }
+# variable "project_name" { type = string }
+# variable "environment" { type = string }
+# variable "aws_region" { type = string }
 
 data "aws_caller_identity" "current" {}
 
@@ -42,7 +42,7 @@ data "aws_iam_policy_document" "lambda_ssm_read" {
     # Only allow reading parameters under:
     # /photosden/<env>/app/*
     resources = [
-      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/photosden/${var.environment}/app/*"
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/photosden/${var.environment}/app*"
     ]
   }
 }

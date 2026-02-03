@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "The AWS region to deploy to"
   type        = string
-  default     = "us-east-1"
+  default     = "ap-south-1"
 }
 
 variable "project_name" {
@@ -15,3 +15,9 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+# variable "aws_profile" {
+#   description = "The AWS SSO profile to use"
+#   type        = string
+#   default     = "photosden-dev"
+# }

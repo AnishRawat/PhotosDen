@@ -8,7 +8,7 @@
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
-import { getConfig } from "../../shared/config";
+import { getConfig } from "../../shared/config/index.js";
 
 // Placeholder: replace with your real logger and error mapping
 function correlationIdFrom(event: APIGatewayProxyEventV2): string {
@@ -33,14 +33,24 @@ export async function handler(
 
     return {
       statusCode: 200,
-      headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+      headers: {
+        "content-type": "application/json",
+        "x-correlation-id": correlationId,
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,PATCH,DELETE",
+        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Correlation-Id"
+      },
       body: JSON.stringify({ ok: true, env: config.env }),
     };
   } catch (err) {
     // Central error handler should map typed errors -> status codes
     return {
       statusCode: 500,
-      headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+      headers: {
+        "content-type": "application/json",
+        "x-correlation-id": correlationId,
+        "Access-Control-Allow-Origin": "*",
+      },
       body: JSON.stringify({ error: "InternalError", correlationId }),
     };
   }

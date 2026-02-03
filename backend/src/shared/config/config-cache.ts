@@ -4,8 +4,8 @@
  */
 
 import { SSMClient } from "@aws-sdk/client-ssm";
-import type { AppConfig, AppEnv } from "./config-types";
-import { loadConfigFromParameterStore } from "./parameter-store-config";
+import type { AppConfig, AppEnv } from "./config-types.js";
+import { loadConfigFromParameterStore } from "./parameter-store-config.js";
 
 interface CacheState {
   loadedAtMs: number;
