@@ -25,7 +25,7 @@ export class CognitoService {
         // For now, Cognito is configured to use EMAIL as the primary sign-in.
         const command = new SignUpCommand({
             ClientId: this.clientId,
-            Username: `user_${crypto.randomUUID()}`,
+            Username: identifier,
             Password: password,
             UserAttributes: [
                 { Name: "email", Value: identifier.includes("@") ? identifier : undefined },
@@ -34,7 +34,7 @@ export class CognitoService {
         });
 
         return await this.client.send(command);
-    }
+    }  
 
     async login(identifier: string, password: string) {
         const command = new InitiateAuthCommand({

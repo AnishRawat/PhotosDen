@@ -9,6 +9,3 @@ output "lambda_invoke_arn" {
 output "lambda_arn" {
   value = aws_lambda_function.api_handler.arn
 }
- output "AppEnv" {
-   value = "dev"
- }

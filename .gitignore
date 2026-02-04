@@ -54,3 +54,4 @@ backend/function.zip
 *.pub
 # Credentials managed by Parameter Store, but just in case:
 secrets.json
+commands.md

@@ -46,7 +46,6 @@ module "lambda" {
   user_pool_id        = module.cognito.user_pool_id
   client_id           = module.cognito.client_id
   users_table_name    = module.dynamodb.table_name
-  AppEnv              = module.lambda.AppEnv
 }
 
 module "api_gateway" {

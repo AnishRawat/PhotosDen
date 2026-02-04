@@ -20,9 +20,9 @@ let cache: CacheState | null = null;
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
 function getEnvOrThrow(): AppEnv {
-  const env = process.env.APP_ENV;
+  const env = process.env.ENVIRONMENT;
   if (env !== "dev" && env !== "prod") {
-    throw new Error(`APP_ENV must be 'dev' or 'prod'. Got: "${env ?? ""}"`);
+    throw new Error(`ENVIRONMENT must be 'dev' or 'prod'. Got: "${env ?? ""}"`);
   }
   return env;
 }

@@ -33,7 +33,3 @@ variable "client_id" {
 variable "users_table_name" {
   type = string
 }
-
-variable "AppEnv" {
-  type = string
-}

@@ -4,8 +4,9 @@ variable "environment" { type = string }
 resource "aws_cognito_user_pool" "main" {
   name = "${var.project_name}-user-pool-${var.environment}"
 
-  alias_attributes         = ["email"]
+  # alias_attributes         = ["email"]
   auto_verified_attributes = ["email"]
+  username_attributes = ["email"]
 
   password_policy {
     # Production-grade password policy

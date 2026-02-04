@@ -19,7 +19,6 @@ resource "aws_lambda_function" "api_handler" {
       COGNITO_USER_POOL_ID = var.user_pool_id
       COGNITO_CLIENT_ID    = var.client_id
       USERS_TABLE_NAME     = var.users_table_name
-      APP_ENV              = var.AppEnv
     }
   }
 
