@@ -1,4 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
+import { DEFAULT_CORS_HEADERS } from "../http/cors.js";
 
 export type Handler = (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
@@ -42,6 +43,15 @@ export class Router {
         ? rawPath.replace(new RegExp(`^/${stage}\\b`), "")
         : rawPath;
 
+        // Handle OPTIONS requests for CORS preflight
+        if (method === "OPTIONS") {
+            return {
+                statusCode: 200,
+                headers: DEFAULT_CORS_HEADERS,
+                body: "",
+            };
+        }
+
         for (const route of this.routes) {
             if (route.method === method) {
                 const match = path.match(route.pathPattern);
@@ -64,10 +74,7 @@ export class Router {
 
         return {
             statusCode: 404,
-            headers: { 
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*"
-            },
+            headers: DEFAULT_CORS_HEADERS,
             body: JSON.stringify({ message: `Route ${method} ${path} not found` }),
         };
     }

@@ -3,6 +3,9 @@ import {
     SignUpCommand, 
     InitiateAuthCommand, 
     ConfirmSignUpCommand,
+    ResendConfirmationCodeCommand,
+    ForgotPasswordCommand,
+    ConfirmForgotPasswordCommand,
     AuthFlowType
 } from "@aws-sdk/client-cognito-identity-provider";
 
@@ -54,6 +57,35 @@ export class CognitoService {
             ClientId: this.clientId,
             Username: identifier,
             ConfirmationCode: code,
+        });
+
+        return await this.client.send(command);
+    }
+
+    async resendConfirmationCode(identifier: string) {
+        const command = new ResendConfirmationCodeCommand({
+            ClientId: this.clientId,
+            Username: identifier,
+        });
+
+        return await this.client.send(command);
+    }
+
+    async forgotPassword(identifier: string) {
+        const command = new ForgotPasswordCommand({
+            ClientId: this.clientId,
+            Username: identifier,
+        });
+
+        return await this.client.send(command);
+    }
+
+    async confirmForgotPassword(identifier: string, code: string, newPassword: string) {
+        const command = new ConfirmForgotPasswordCommand({
+            ClientId: this.clientId,
+            Username: identifier,
+            ConfirmationCode: code,
+            Password: newPassword,
         });
 
         return await this.client.send(command);
