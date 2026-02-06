@@ -1,6 +1,8 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, DeleteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, DeleteCommand, UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DEFAULT_CORS_HEADERS } from "../../shared/http/cors.js";
 import { verifyToken } from "../../shared/auth/jwt-verifier.js";
 
@@ -10,10 +12,148 @@ function correlationIdFrom(event: APIGatewayProxyEventV2): string {
 
 const DEFAULT_HEADERS = DEFAULT_CORS_HEADERS;
 
-// Initialize DynamoDB client
+// Initialize clients
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
+const s3Client = new S3Client({});
+
 const tableName = process.env.DYNAMODB_TABLE_NAME || "photosden-store-dev";
+const bucketName = process.env.S3_BUCKET_NAME || "photosden-uploads-dev";
+
+/**
+ * Get presigned download URL for encrypted photo
+ * 
+ * Returns presigned S3 URLs for both full-resolution and thumbnail.
+ * Client will:
+ * 1. Download encrypted blob from S3
+ * 2. Decrypt locally using their DEK
+ * 3. Display decrypted image
+ * 
+ * This maintains zero-knowledge: server generates URL but never decrypts.
+ */
+export async function getPhotoDownloadUrlHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+    const correlationId = correlationIdFrom(event);
+    
+    // Verify JWT token
+    const authResult = await verifyToken(event);
+    if (!authResult.authorized) {
+        return {
+            statusCode: 401,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({
+                error: "Unauthorized",
+                message: authResult.error || "Invalid or missing authentication token",
+                correlationId,
+            }),
+        };
+    }
+
+    try {
+        const photoId = event.pathParameters?.photoId;
+        
+        if (!photoId) {
+            return {
+                statusCode: 400,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({
+                    error: "BadRequest",
+                    message: "photoId is required",
+                    correlationId,
+                }),
+            };
+        }
+
+        // Get photo metadata from DynamoDB
+        const getCommand = new GetCommand({
+            TableName: tableName,
+            Key: {
+                PK: `USER#${authResult.userId}`,
+                SK: `PHOTO#${photoId}`,
+            },
+        });
+
+        const result = await docClient.send(getCommand);
+        
+        if (!result.Item) {
+            return {
+                statusCode: 404,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({
+                    error: "NotFound",
+                    message: "Photo not found",
+                    correlationId,
+                }),
+            };
+        }
+
+        const photo = result.Item;
+
+        // Check if photo is deleted
+        if (photo.isDeleted) {
+            return {
+                statusCode: 410,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({
+                    error: "Gone",
+                    message: "Photo has been deleted",
+                    correlationId,
+                }),
+            };
+        }
+
+        // Generate presigned download URL for full-resolution photo
+        const downloadCommand = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: photo.s3Key,
+        });
+
+        const downloadUrl = await getSignedUrl(s3Client, downloadCommand, {
+            expiresIn: 3600, // 1 hour
+        });
+
+        // Generate presigned URL for thumbnail if exists
+        let thumbnailDownloadUrl: string | undefined;
+        if (photo.thumbnailS3Key) {
+            const thumbnailCommand = new GetObjectCommand({
+                Bucket: bucketName,
+                Key: photo.thumbnailS3Key,
+            });
+
+            thumbnailDownloadUrl = await getSignedUrl(s3Client, thumbnailCommand, {
+                expiresIn: 3600, // 1 hour
+            });
+        }
+
+        return {
+            statusCode: 200,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({
+                photoId,
+                downloadUrl,
+                thumbnailDownloadUrl,
+                
+                // Include encryption params for client-side decryption
+                iv: photo.iv,
+                thumbnailIV: photo.thumbnailIV,
+                
+                // Additional metadata
+                originalFilename: photo.originalFilename,
+                mimeType: photo.mimeType,
+                encryptedSize: photo.encryptedSize,
+                capturedAt: photo.capturedAt,
+                
+                correlationId,
+            }),
+        };
+    } catch (err: any) {
+        console.error("Error generating download URL:", err);
+        return {
+            statusCode: 500,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
+        };
+    }
+}
 
 export async function deletePhotoHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
     const correlationId = correlationIdFrom(event);

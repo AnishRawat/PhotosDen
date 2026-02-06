@@ -450,6 +450,60 @@ paths:
                 $ref: "#/components/schemas/StandardResponse"
 
   /photos/{photoId}:
+    get:
+      summary: Get presigned download URL for photo
+      description: Returns presigned S3 URLs to download encrypted photo and thumbnail. Client decrypts locally.
+      tags: [Photos]
+      security:
+        - BearerAuth: []
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Download URLs generated
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [photoId, downloadUrl, iv]
+                properties:
+                  photoId:
+                    type: string
+                  downloadUrl:
+                    type: string
+                    description: Presigned S3 URL for encrypted full-resolution photo
+                  thumbnailDownloadUrl:
+                    type: string
+                    description: Presigned S3 URL for encrypted thumbnail
+                  iv:
+                    type: string
+                    description: Base64-encoded IV for decrypting photo
+                  thumbnailIV:
+                    type: string
+                    description: Base64-encoded IV for decrypting thumbnail
+                  originalFilename:
+                    type: string
+                  mimeType:
+                    type: string
+                  encryptedSize:
+                    type: integer
+                  capturedAt:
+                    type: string
+                    format: date-time
+                  correlationId:
+                    type: string
     delete:
       summary: Soft delete photo
       tags: [Photos]

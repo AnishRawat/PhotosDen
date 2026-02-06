@@ -96,9 +96,24 @@ export class UploadService {
     }
 
     /**
-     * Add photo to upload (with presigned URL for S3 upload)
+     * Add photo to upload (with presigned URL for S3 upload and encryption metadata)
      */
-    async addPhotoToUpload(userId: string, uploadId: string, photoId: string, s3Key: string, presignedUrl: string): Promise<void> {
+    async addPhotoToUpload(
+        userId: string,
+        uploadId: string,
+        photoId: string,
+        s3Key: string,
+        presignedUrl: string,
+        metadata?: {
+            iv?: string;
+            encryptedSize?: number;
+            originalFilename?: string;
+            mimeType?: string;
+            thumbnailS3Key?: string;
+            thumbnailIV?: string;
+            capturedAt?: string;
+        }
+    ): Promise<void> {
         const command = new PutCommand({
             TableName: this.tableName,
             Item: {
@@ -109,6 +124,7 @@ export class UploadService {
                 s3Key,
                 presignedUrl,
                 uploadCompleted: false,
+                ...metadata, // Spread encryption metadata
             },
         });
 

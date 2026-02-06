@@ -3,6 +3,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { ulid } from "ulid";
 import { UploadService } from "../../shared/database/UploadService.js";
 import { DEFAULT_CORS_HEADERS } from "../../shared/http/cors.js";
 import { verifyToken } from "../../shared/auth/jwt-verifier.js";
@@ -41,47 +42,100 @@ export async function initiateUploadHandler(event: APIGatewayProxyEventV2): Prom
 
     try {
         const body = JSON.parse(event.body ?? "{}");
-        const { photoCount } = body;
+        const { photos } = body;
         
-        if (!photoCount || photoCount < 1) {
+        // Expect array of photo metadata with encryption IVs
+        if (!photos || !Array.isArray(photos) || photos.length === 0) {
             return {
                 statusCode: 400,
                 headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
                 body: JSON.stringify({
                     error: "BadRequest",
-                    message: "photoCount is required and must be >= 1",
+                    message: "photos array is required and must not be empty",
                     correlationId,
                 }),
             };
         }
+        
+        // Validate each photo has required encryption parameters
+        for (const photo of photos) {
+            if (!photo.iv || !photo.encryptedSize || !photo.originalFilename || !photo.mimeType) {
+                return {
+                    statusCode: 400,
+                    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                    body: JSON.stringify({
+                        error: "BadRequest",
+                        message: "Each photo must have: iv, encryptedSize, originalFilename, mimeType",
+                        correlationId,
+                    }),
+                };
+            }
+        }
 
         // Generate upload ID
-        const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const uploadId = ulid();
         
         // Create upload record
-        const upload = await uploadService.createUpload(authResult.userId!, uploadId, photoCount);
+        const upload = await uploadService.createUpload(authResult.userId!, uploadId, photos.length);
 
-        // Generate presigned URLs for each photo
+        // Generate presigned URLs for each photo with ULID keys
         const presignedUrls = [];
-        for (let i = 0; i < photoCount; i++) {
-            const photoId = `photo_${Date.now()}_${i}_${Math.random().toString(36).substring(7)}`;
-            const s3Key = `users/${authResult.userId}/uploads/${uploadId}/${photoId}.jpg`;
+        for (const photo of photos) {
+            // Generate ULID for photo (collision-proof)
+            const photoUlid = ulid();
             
-            // Generate presigned URL for S3 upload
-            const command = new PutObjectCommand({
+            // S3 key pattern: users/{userId}/private/{ULID}
+            const s3Key = `users/${authResult.userId}/private/${photoUlid}`;
+            
+            // Generate thumbnail key if thumbnail exists
+            let thumbnailS3Key: string | undefined;
+            if (photo.hasThumbnail && photo.thumbnailIV) {
+                thumbnailS3Key = `users/${authResult.userId}/private/${photoUlid}_thumb`;
+            }
+            
+            // Generate presigned URL for full-res encrypted photo
+            const fullResCommand = new PutObjectCommand({
                 Bucket: bucketName,
                 Key: s3Key,
-                ContentType: "image/jpeg",
+                ContentType: "application/octet-stream", // Encrypted blob
             });
+            const presignedUrl = await getSignedUrl(s3Client, fullResCommand, { expiresIn: 3600 }); // 1 hour
 
-            const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // 1 hour
+            // Generate presigned URL for thumbnail if exists
+            let thumbnailPresignedUrl: string | undefined;
+            if (thumbnailS3Key) {
+                const thumbCommand = new PutObjectCommand({
+                    Bucket: bucketName,
+                    Key: thumbnailS3Key,
+                    ContentType: "application/octet-stream",
+                });
+                thumbnailPresignedUrl = await getSignedUrl(s3Client, thumbCommand, { expiresIn: 3600 });
+            }
 
-            // Store photo metadata
-            await uploadService.addPhotoToUpload(authResult.userId!, uploadId, photoId, s3Key, presignedUrl);
+            // Store photo metadata in DynamoDB
+            await uploadService.addPhotoToUpload(
+                authResult.userId!,
+                uploadId,
+                photoUlid,
+                s3Key,
+                presignedUrl,
+                {
+                    iv: photo.iv,
+                    encryptedSize: photo.encryptedSize,
+                    originalFilename: photo.originalFilename,
+                    mimeType: photo.mimeType,
+                    thumbnailS3Key,
+                    thumbnailIV: photo.thumbnailIV,
+                    capturedAt: photo.capturedAt || new Date().toISOString(),
+                }
+            );
 
             presignedUrls.push({
-                photoId,
+                photoId: photoUlid,
                 presignedUrl,
+                thumbnailPresignedUrl,
+                s3Key,
+                thumbnailS3Key,
             });
         }
 
@@ -90,7 +144,7 @@ export async function initiateUploadHandler(event: APIGatewayProxyEventV2): Prom
             headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
             body: JSON.stringify({
                 uploadId,
-                presignedUrls,
+                photos: presignedUrls,
             }),
         };
     } catch (err: any) {
