@@ -530,6 +530,216 @@ paths:
             X-Correlation-Id:
               $ref: "#/components/headers/X-Correlation-Id"
 
+  # --- Billing & Wallet ---
+  /wallet:
+    get:
+      summary: Get wallet balance
+      description: Get current wallet balance, reserved funds, and account status
+      tags: [Billing]
+      security:
+        - BearerAuth: []
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      responses:
+        "200":
+          description: Wallet balance retrieved
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/WalletBalanceResponse"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Server error
+
+  /wallet/deposits:
+    post:
+      summary: Create deposit
+      description: Add funds to wallet
+      tags: [Billing]
+      security:
+        - BearerAuth: []
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  description: Amount in INR (rupees)
+                  example: 100.50
+                notes:
+                  type: string
+                  description: Optional notes
+      responses:
+        "200":
+          description: Deposit created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      depositId:
+                        type: string
+                      amount:
+                        type: number
+                      newBalance:
+                        type: number
+                      currency:
+                        type: string
+                      currencySymbol:
+                        type: string
+        "400":
+          description: Invalid request
+        "401":
+          description: Unauthorized
+        "500":
+          description: Server error
+
+  /billing/status:
+    get:
+      summary: Get current billing status
+      description: Returns current month's bill, usage breakdown, and projected bill.
+      tags: [Billing]
+      security:
+        - BearerAuth: []
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      responses:
+        "200":
+          description: Billing status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/BillingStatus"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Server error
+
+  /admin/pricing/sync:
+    post:
+      summary: Manually sync AWS prices
+      description: Fetches latest AWS prices and updates lookups.
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      responses:
+        "200":
+          description: Prices synchronized
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+  # --- Lookups / Configuration ---
+  /lookups:
+    get:
+      summary: Get runtime configuration
+      description: Returns all runtime configuration values (pricing, messages, thresholds). Cached for 30 minutes.
+      tags: [Configuration]
+      security: []  # Public endpoint
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      responses:
+        "200":
+          description: Configuration retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      version:
+                        type: string
+                      lastUpdated:
+                        type: string
+                        format: date-time
+                      lookups:
+                        type: object
+                        additionalProperties: true
+                        example:
+                          billing.pricing.photoView: 1.00
+                          billing.pricing.zipDownload: 5.00
+                          ui.warnings.zeroBalance.title: "Zero Balance Warning"
+        "500":
+          description: Server error
+
+  /lookups/refresh:
+    post:
+      summary: Refresh configuration cache
+      description: Admin endpoint to force cache refresh
+      tags: [Configuration]
+      security:
+        - BearerAuth: []
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      responses:
+        "200":
+          description: Cache cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        "401":
+          description: Unauthorized
+        "500":
+          description: Server error
+
   /trash:
     get:
       summary: List trash
@@ -1226,3 +1436,28 @@ components:
                 type: object
               curl_command:
                 type: string
+    WalletBalanceResponse:
+      type: object
+      required: [balance]
+      properties:
+        balance:
+          type: integer
+
+    BillingStatus:
+      type: object
+      required: [userId, currentMonth, currentBillPaise, expectedBillPaise, breakdown, storageUsageGB]
+      properties:
+        userId: { type: string }
+        currentMonth: { type: string, example: "202602" }
+        currentBillPaise: { type: integer }
+        expectedBillPaise: { type: integer }
+        breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              count: { type: integer }
+              totalPaise: { type: integer }
+        storageUsageGB: { type: number }
+        lastUpdated: { type: integer }

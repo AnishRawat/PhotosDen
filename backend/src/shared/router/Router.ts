@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
-import { DEFAULT_CORS_HEADERS } from "../http/cors.js";
+import { DEFAULT_CORS_HEADERS } from "../http/cors";
 
 export type Handler = (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 

@@ -7,6 +7,8 @@ import { ulid } from "ulid";
 import { UploadService } from "../../shared/database/UploadService.js";
 import { DEFAULT_CORS_HEADERS } from "../../shared/http/cors.js";
 import { verifyToken } from "../../shared/auth/jwt-verifier.js";
+import { DynamoDBWalletRepository } from "../../infrastructure/database/repositories/DynamoDBWalletRepository.js";
+import { WalletStatus } from "../../domain/billing/enums.js";
 
 function correlationIdFrom(event: APIGatewayProxyEventV2): string {
     return event.headers?.["x-correlation-id"]?.toString() ?? event.requestContext?.requestId ?? "unknown";
@@ -41,6 +43,37 @@ export async function initiateUploadHandler(event: APIGatewayProxyEventV2): Prom
     }
 
     try {
+        // --- BILLING: Basic wallet check before upload ---
+        try {
+            const walletRepo = new DynamoDBWalletRepository(dynamoClient, tableName);
+            const wallet = await walletRepo.get(authResult.userId!);
+            if (!wallet) {
+                return {
+                    statusCode: 402,
+                    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                    body: JSON.stringify({
+                        error: "WalletNotFound",
+                        message: "Please initialize your wallet before uploading.",
+                        correlationId,
+                    }),
+                };
+            }
+            if (wallet.accountStatus === 'SUSPENDED') {
+                return {
+                    statusCode: 402,
+                    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                    body: JSON.stringify({
+                        error: "AccountSuspended",
+                        message: "Your account is suspended due to insufficient funds.",
+                        correlationId,
+                    }),
+                };
+            }
+        } catch (billingErr) {
+            console.warn('[BILLING] Wallet check failed during upload initiation:', billingErr);
+            // We'll allow it for now if it's a technical error, but log it.
+        }
+
         const body = JSON.parse(event.body ?? "{}");
         const { photos } = body;
         

@@ -4,11 +4,34 @@ import { signupHandler, loginHandler, confirmHandler, resendCodeHandler, forgotP
 import { getProfileHandler, updateProfileHandler } from "./interfaces/handlers/profile-handlers.js";
 import { initiateUploadHandler, listUploadsHandler, getUploadPhotosHandler, completeUploadHandler } from "./interfaces/handlers/upload-handlers.js";
 import { createAlbumHandler, listAlbumsHandler, getAlbumHandler, deleteAlbumHandler, updateAlbumPhotosHandler } from "./interfaces/handlers/album-handlers.js";
-import { deletePhotoHandler } from "./interfaces/handlers/photo-handlers.js";
+import { getPhotoDownloadUrlHandler, deletePhotoHandler } from "./interfaces/handlers/photo-handlers.js";
 import { listTrashHandler, restoreItemsHandler, permanentPurgeHandler } from "./interfaces/handlers/trash-handlers.js";
 import { createShareHandler, listActiveSharesHandler, updateShareStatusHandler, archiveShareHandler, getShareVisitsHandler, publicShareAccessHandler } from "./interfaces/handlers/share-handlers.js";
 import { generateSwaggerTestHandler } from "./interfaces/handlers/devtools-handlers.js";
+import { getWalletHandler, createDepositHandler } from "./interfaces/handlers/billing-handlers.js";
+import { getLookupsHandler, refreshLookupsHandler } from "./interfaces/handlers/lookups-handlers.js";
+import { getBillingStatusHandler } from "./interfaces/handlers/billing-status-handlers.js";
+import { syncAwsPricesHandler, manualPriceSyncHandler } from "./interfaces/handlers/pricing-handlers.js";
+import { BillingGuard } from "./infrastructure/billing/BillingGuard.js";
+import { LookupsService } from "./infrastructure/config/LookupsService.js";
+import { DynamoDBWalletRepository } from "./infrastructure/database/repositories/DynamoDBWalletRepository.js";
 import { DEFAULT_CORS_HEADERS } from "./shared/http/cors.js";
+
+// DI for use cases (This is a simplified approach, in a larger app we'd have a container)
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBUsageEventRepository } from "./infrastructure/database/repositories/DynamoDBUsageEventRepository.js";
+import { DynamoDBBillingPeriodRepository } from "./infrastructure/database/repositories/DynamoDBBillingPeriodRepository.js";
+import { GetBillingStatusUseCase } from "./application/billing/use-cases/GetBillingStatusUseCase.js";
+
+const ddb = new DynamoDBClient({});
+const TABLE = process.env.DYNAMODB_TABLE_NAME || 'photosden-main';
+const usageRepo = new DynamoDBUsageEventRepository(ddb, TABLE);
+const periodRepo = new DynamoDBBillingPeriodRepository(ddb, TABLE);
+const walletRepo = new DynamoDBWalletRepository(ddb, TABLE);
+const lookupsService = new LookupsService(ddb, TABLE);
+
+const billingGuard = new BillingGuard(walletRepo, usageRepo, lookupsService);
+const getBillingStatusUseCase = new GetBillingStatusUseCase(usageRepo, periodRepo);
 
 const router = new Router();
 
@@ -38,6 +61,7 @@ router.on("DELETE", "/albums/:albumId", deleteAlbumHandler);
 router.on("PUT", "/albums/:albumId/photos", updateAlbumPhotosHandler);
 
 // Photo Routes
+router.on("GET", "/photos/:photoId", (event) => getPhotoDownloadUrlHandler(event, billingGuard));
 router.on("DELETE", "/photos/:photoId", deletePhotoHandler);
 
 // Trash Routes
@@ -46,12 +70,24 @@ router.on("POST", "/trash/restore", restoreItemsHandler);
 router.on("DELETE", "/trash/:itemType/:id", permanentPurgeHandler);
 
 // Share Routes
-router.on("POST", "/shares", createShareHandler);
+router.on("POST", "/shares", (event) => createShareHandler(event, billingGuard));
 router.on("GET", "/shares/active", listActiveSharesHandler);
 router.on("PUT", "/shares/:id/status", updateShareStatusHandler);
 router.on("DELETE", "/shares/:id", archiveShareHandler);
 router.on("GET", "/shares/:id/visits", getShareVisitsHandler);
-router.on("GET", "/share/:token", publicShareAccessHandler); // Public endpoint (no auth)
+router.on("GET", "/share/:token", (event) => publicShareAccessHandler(event, billingGuard)); // Public endpoint (no auth)
+
+// Billing & Wallet Routes
+router.on("GET", "/wallet", getWalletHandler);
+router.on("POST", "/wallet/deposits", createDepositHandler);
+router.on("GET", "/billing/status", (event) => getBillingStatusHandler(event, getBillingStatusUseCase));
+
+// Lookups / Configuration Routes
+router.on("GET", "/lookups", getLookupsHandler);
+router.on("POST", "/lookups/refresh", refreshLookupsHandler);
+
+// Admin / System Routes
+router.on("POST", "/admin/pricing/sync", manualPriceSyncHandler);
 
 // Devtools Routes
 router.on("POST", "/devtools/openai/generate-swagger-test", generateSwaggerTestHandler);

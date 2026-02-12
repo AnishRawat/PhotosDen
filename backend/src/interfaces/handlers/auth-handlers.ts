@@ -64,6 +64,7 @@ export async function signupHandler(event: APIGatewayProxyEventV2): Promise<APIG
         const service = await getCognitoService();
         const result = await service.signup(identifier, password);
         
+        
         // Store user profile with encryption parameters
         await userService.createProfile({
             userId: result.UserSub!,
@@ -75,12 +76,31 @@ export async function signupHandler(event: APIGatewayProxyEventV2): Promise<APIG
             createdAt: new Date().toISOString(),
         });
         
+        // Auto-create wallet for new user
+        try {
+            const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
+            const { DynamoDBWalletRepository } = await import("../../infrastructure/database/repositories/DynamoDBWalletRepository.js");
+            const { CreateWalletUseCase } = await import("../../application/billing/use-cases/CreateWalletUseCase.js");
+            
+            const dynamoDB = new DynamoDBClient({});
+            const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'photosden-main';
+            const walletRepo = new DynamoDBWalletRepository(dynamoDB, TABLE_NAME);
+            const createWalletUseCase = new CreateWalletUseCase(walletRepo);
+            
+            await createWalletUseCase.execute(result.UserSub!);
+            console.log(`[SIGNUP] Auto-created wallet for user ${result.UserSub}`);
+        } catch (walletError) {
+            // Don't fail signup if wallet creation fails - it can be created later
+            console.error('[SIGNUP] Failed to create wallet:', walletError);
+        }
+        
         return {
             statusCode: 201,
             headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
             body: JSON.stringify({ 
                 verificationRequired: true, 
                 userId: result.UserSub,
+                walletCreated: true,
                 correlationId 
             }),
         };

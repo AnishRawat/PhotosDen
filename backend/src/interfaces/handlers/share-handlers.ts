@@ -6,6 +6,8 @@ import { AlbumService } from "../../shared/database/AlbumService.js";
 import { DEFAULT_CORS_HEADERS } from "../../shared/http/cors.js";
 import { verifyToken } from "../../shared/auth/jwt-verifier.js";
 import { createHash } from "crypto";
+import { BillingGuard } from "../../infrastructure/billing/BillingGuard.js";
+import { EventType } from "../../domain/billing/enums.js";
 
 function correlationIdFrom(event: APIGatewayProxyEventV2): string {
     return event.headers?.["x-correlation-id"]?.toString() ?? event.requestContext?.requestId ?? "unknown";
@@ -24,7 +26,10 @@ const tableName = process.env.DYNAMODB_TABLE_NAME || "photosden-store-dev";
 const shareService = new ShareService(docClient, tableName);
 const albumService = new AlbumService(docClient, tableName);
 
-export async function createShareHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+export async function createShareHandler(
+    event: APIGatewayProxyEventV2,
+    billingGuard: BillingGuard
+): Promise<APIGatewayProxyResultV2> {
     const correlationId = correlationIdFrom(event);
     
     // Verify JWT token
@@ -78,23 +83,57 @@ export async function createShareHandler(event: APIGatewayProxyEventV2): Promise
         const shareId = `share_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         const shareToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         
-        // Create share
-        const shareLink = await shareService.createShare(
-            authResult.userId!,
-            shareId,
-            shareToken,
-            targetType,
-            targetId,
-            allowedRes || ["1024x768", "512x384"],
-            expiresAt,
-            { blockScreenshots, watermark, viewTimer }
-        );
+        // --- BILLING: Reserve funds for share link creation ---
+        let reservationId: string | null = null;
+        try {
+            reservationId = await billingGuard.checkAndReserve(authResult.userId!, EventType.SHARE_LINK_CREATE, 1);
+        } catch (billingErr: any) {
+            console.warn(`[BILLING] Reservation failed for user ${authResult.userId}:`, billingErr.message);
+            return {
+                statusCode: 402, // Payment Required
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({
+                    error: "InsufficientFunds",
+                    message: billingErr.message,
+                    correlationId,
+                }),
+            };
+        }
 
-        return {
-            statusCode: 201,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify(shareLink),
-        };
+        try {
+            // Create share
+            const shareLink = await shareService.createShare(
+                authResult.userId!,
+                shareId,
+                shareToken,
+                targetType,
+                targetId,
+                allowedRes || ["1024x768", "512x384"],
+                expiresAt,
+                { blockScreenshots, watermark, viewTimer }
+            );
+
+            // --- BILLING: Capture funds on success ---
+            if (reservationId) {
+                await billingGuard.capture(reservationId, authResult.userId!).catch(e => 
+                    console.error(`[BILLING] Failed to capture reservation ${reservationId}:`, e)
+                );
+            }
+
+            return {
+                statusCode: 201,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify(shareLink),
+            };
+        } catch (err: any) {
+            // --- BILLING: Release funds on failure ---
+            if (reservationId) {
+                await billingGuard.release(reservationId, authResult.userId!).catch(e => 
+                    console.error(`[BILLING] Failed to release reservation ${reservationId}:`, e)
+                );
+            }
+            throw err;
+        }
     } catch (err: any) {
         console.error("Error creating share:", err);
         return {
@@ -331,7 +370,10 @@ export async function getShareVisitsHandler(event: APIGatewayProxyEventV2): Prom
     }
 }
 
-export async function publicShareAccessHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+export async function publicShareAccessHandler(
+    event: APIGatewayProxyEventV2,
+    billingGuard: BillingGuard
+): Promise<APIGatewayProxyResultV2> {
     const correlationId = correlationIdFrom(event);
     
     // NO AUTH CHECK - This is a public endpoint
@@ -427,6 +469,21 @@ export async function publicShareAccessHandler(event: APIGatewayProxyEventV2): P
 
         // Increment access count
         await shareService.incrementAccessCount(share.ownerId, share.shareId);
+
+        // --- BILLING: Charge owner for share visit (photo view cost) ---
+        // Note: We use RETRIEVE_PHOTO as a proxy for share view cost.
+        // This ensures the owner pays for the egress and processing.
+        try {
+            const reservationId = await billingGuard.checkAndReserve(share.ownerId, EventType.RETRIEVE_PHOTO, 1);
+            if (reservationId) {
+                await billingGuard.capture(reservationId, share.ownerId);
+            }
+        } catch (billingErr: any) {
+            // If owner cannot pay, we could potentially stop serving the share,
+            // but for now let's just log it. In a strict system, we'd return 402.
+            console.error(`[BILLING] Failed to charge owner ${share.ownerId} for share visit:`, billingErr.message);
+            // We'll let the user see the photo this time, but the system will likely suspend them soon.
+        }
 
         // Return content with constraints
         return {

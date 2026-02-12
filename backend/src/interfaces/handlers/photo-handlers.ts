@@ -5,6 +5,8 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DEFAULT_CORS_HEADERS } from "../../shared/http/cors.js";
 import { verifyToken } from "../../shared/auth/jwt-verifier.js";
+import { BillingGuard } from "../../infrastructure/billing/BillingGuard.js";
+import { EventType } from "../../domain/billing/enums.js";
 
 function correlationIdFrom(event: APIGatewayProxyEventV2): string {
     return event.headers?.["x-correlation-id"]?.toString() ?? event.requestContext?.requestId ?? "unknown";
@@ -31,7 +33,10 @@ const bucketName = process.env.S3_BUCKET_NAME || "photosden-uploads-dev";
  * 
  * This maintains zero-knowledge: server generates URL but never decrypts.
  */
-export async function getPhotoDownloadUrlHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+export async function getPhotoDownloadUrlHandler(
+    event: APIGatewayProxyEventV2,
+    billingGuard: BillingGuard
+): Promise<APIGatewayProxyResultV2> {
     const correlationId = correlationIdFrom(event);
     
     // Verify JWT token
@@ -101,56 +106,97 @@ export async function getPhotoDownloadUrlHandler(event: APIGatewayProxyEventV2):
             };
         }
 
-        // Generate presigned download URL for full-resolution photo
-        const downloadCommand = new GetObjectCommand({
-            Bucket: bucketName,
-            Key: photo.s3Key,
-        });
-
-        const downloadUrl = await getSignedUrl(s3Client, downloadCommand, {
-            expiresIn: 3600, // 1 hour
-        });
-
-        // Generate presigned URL for thumbnail if exists
-        let thumbnailDownloadUrl: string | undefined;
-        if (photo.thumbnailS3Key) {
-            const thumbnailCommand = new GetObjectCommand({
-                Bucket: bucketName,
-                Key: photo.thumbnailS3Key,
-            });
-
-            thumbnailDownloadUrl = await getSignedUrl(s3Client, thumbnailCommand, {
-                expiresIn: 3600, // 1 hour
-            });
+        // --- BILLING: Reserve funds for photo retrieval ---
+        let reservationId: string | null = null;
+        try {
+            reservationId = await billingGuard.checkAndReserve(authResult.userId!, EventType.RETRIEVE_PHOTO, 1);
+        } catch (billingErr: any) {
+            console.warn(`[BILLING] Reservation failed for user ${authResult.userId}:`, billingErr.message);
+            return {
+                statusCode: 402, // Payment Required
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({
+                    error: "InsufficientFunds",
+                    message: billingErr.message,
+                    correlationId,
+                }),
+            };
         }
 
-        return {
-            statusCode: 200,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({
-                photoId,
-                downloadUrl,
-                thumbnailDownloadUrl,
-                
-                // Include encryption params for client-side decryption
-                iv: photo.iv,
-                thumbnailIV: photo.thumbnailIV,
-                
-                // Additional metadata
-                originalFilename: photo.originalFilename,
-                mimeType: photo.mimeType,
-                encryptedSize: photo.encryptedSize,
-                capturedAt: photo.capturedAt,
-                
-                correlationId,
-            }),
-        };
-    } catch (err: any) {
-        console.error("Error generating download URL:", err);
+        try {
+            // Generate presigned download URL for full-resolution photo
+            const downloadCommand = new GetObjectCommand({
+                Bucket: bucketName,
+                Key: photo.s3Key,
+            });
+
+            const downloadUrl = await getSignedUrl(s3Client, downloadCommand, {
+                expiresIn: 3600, // 1 hour
+            });
+
+            // Generate presigned URL for thumbnail if exists
+            let thumbnailDownloadUrl: string | undefined;
+            if (photo.thumbnailS3Key) {
+                const thumbnailCommand = new GetObjectCommand({
+                    Bucket: bucketName,
+                    Key: photo.thumbnailS3Key,
+                });
+
+                thumbnailDownloadUrl = await getSignedUrl(s3Client, thumbnailCommand, {
+                    expiresIn: 3600, // 1 hour
+                });
+            }
+
+            return {
+                statusCode: 200,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({
+                    photoId,
+                    downloadUrl,
+                    thumbnailDownloadUrl,
+                    
+                    // Include encryption params for client-side decryption
+                    iv: photo.iv,
+                    thumbnailIV: photo.thumbnailIV,
+                    
+                    // Additional metadata
+                    originalFilename: photo.originalFilename,
+                    mimeType: photo.mimeType,
+                    encryptedSize: photo.encryptedSize,
+                    capturedAt: photo.capturedAt,
+                    
+                    correlationId,
+                }),
+            };
+        } catch (err: any) {
+            // --- BILLING: Release funds if something failed before generating URL ---
+            if (reservationId) {
+                await billingGuard.release(reservationId, authResult.userId!).catch(e => 
+                    console.error(`[BILLING] Failed to release reservation ${reservationId}:`, e)
+                );
+                reservationId = null; // Prevent double handling in finally
+            }
+
+            console.error("Error generating download URL:", err);
+            return {
+                statusCode: 500,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
+            };
+        } finally {
+            // --- BILLING: Capture funds if successful ---
+            if (reservationId) {
+                await billingGuard.capture(reservationId, authResult.userId!).catch(e => 
+                    console.error(`[BILLING] Failed to capture reservation ${reservationId}:`, e)
+                );
+            }
+        }
+    } catch (outerErr: any) {
+        console.error("Outer Error in photo handler:", outerErr);
         return {
             statusCode: 500,
             headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
+            body: JSON.stringify({ error: "InternalServerError", message: outerErr.message, correlationId }),
         };
     }
 }
