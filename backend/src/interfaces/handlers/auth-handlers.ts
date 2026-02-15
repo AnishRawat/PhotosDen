@@ -29,46 +29,58 @@ async function getCognitoService() {
     });
 }
 
+// Helper to return standardized 200 OK responses
+const successResponse = (body: any, correlationId: string) => ({
+    statusCode: 200,
+    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+    body: JSON.stringify({ success: true, ...body, correlationId }),
+});
+
+const errorResponse = (error: string, message: string, correlationId: string, statusCode: number = 200) => ({
+    statusCode: 200, // Always return 200 for handled errors as per requirement
+    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+    body: JSON.stringify({ success: false, error, message, correlationId, originalStatus: statusCode }),
+});
+
 export async function signupHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
     const correlationId = correlationIdFrom(event);
+    let identifier: string = "";
+    let body: any = {};
+
     try {
-        const body = JSON.parse(event.body ?? "{}");
-        const { identifier, password, encryptedDEK, kdfSalt, kdfIterations } = body;
+        body = JSON.parse(event.body ?? "{}");
+        identifier = body.identifier;
+        const { password, name, encryptedDEK, kdfSalt, kdfIterations } = body;
         
         // Validate required encryption parameters
         if (!encryptedDEK || !kdfSalt || !kdfIterations) {
-            return {
-                statusCode: 400,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "BadRequest",
-                    message: "Encryption parameters required: encryptedDEK, kdfSalt, kdfIterations",
-                    correlationId 
-                }),
-            };
+            return errorResponse("BadRequest", "Encryption parameters required: encryptedDEK, kdfSalt, kdfIterations", correlationId, 400);
+        }
+
+        // Validate name
+        if (!name || typeof name !== 'string' || name.trim().length === 0) {
+             return errorResponse("BadRequest", "Name is required", correlationId, 400);
         }
         
         // Validate KDF iterations (minimum security threshold)
         if (kdfIterations < 100000) {
-            return {
-                statusCode: 400,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "BadRequest",
-                    message: "kdfIterations must be >= 100,000 for security",
-                    correlationId 
-                }),
-            };
+            return errorResponse("BadRequest", "kdfIterations must be >= 100,000 for security", correlationId, 400);
+        }
+        
+        // Validate password strength
+        if (password.length < 12) {
+            return errorResponse("InvalidPassword", "Password must be at least 12 characters long", correlationId, 400);
         }
         
         const service = await getCognitoService();
         const result = await service.signup(identifier, password);
         
         
-        // Store user profile with encryption parameters
+        // Store user profile with encryption parameters AND name
         await userService.createProfile({
             userId: result.UserSub!,
             email: identifier,
+            name: name.trim(), // Store name
             encryptedDEK,
             kdfSalt,
             kdfIterations,
@@ -90,26 +102,73 @@ export async function signupHandler(event: APIGatewayProxyEventV2): Promise<APIG
             await createWalletUseCase.execute(result.UserSub!);
             console.log(`[SIGNUP] Auto-created wallet for user ${result.UserSub}`);
         } catch (walletError) {
-            // Don't fail signup if wallet creation fails - it can be created later
             console.error('[SIGNUP] Failed to create wallet:', walletError);
         }
         
-        return {
-            statusCode: 201,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ 
-                verificationRequired: true, 
-                userId: result.UserSub,
-                walletCreated: true,
-                correlationId 
-            }),
-        };
+        return successResponse({ 
+            verificationRequired: true, 
+            userId: result.UserSub,
+            walletCreated: true 
+        }, correlationId);
+
+
     } catch (err: any) {
-        return {
-            statusCode: err.$metadata?.httpStatusCode ?? 400,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
-        };
+        // Handle "User already exists" scenario for unconfirmed users
+        if (err.name === "UsernameExistsException" && identifier) {
+             try {
+                const service = await getCognitoService();
+                const user = await service.adminGetUser(identifier);
+                
+                // Only proceed if user is UNCONFIRMED
+                if (user.UserStatus === "UNCONFIRMED") {
+                    const userCreateDate = user.UserCreateDate;
+                    if (userCreateDate) {
+                        const now = new Date();
+                        const diffInMinutes = (now.getTime() - userCreateDate.getTime()) / 60000;
+                        // COOLDOWN: 3 Minutes
+                        if (diffInMinutes > 3) {
+                             console.log(`[SIGNUP] Deleting stale unconfirmed user: ${identifier} (Age: ${diffInMinutes.toFixed(1)}m)`);
+                             // Delete stale user
+                             await service.adminDeleteUser(identifier);
+                             
+                             // RETRY SIGNUP
+                             // Recursively call signup logic or just re-execute critical parts? 
+                             // We need to re-extract password safely.
+                             const { password, name, encryptedDEK, kdfSalt, kdfIterations } = body;
+
+                             const result = await service.signup(identifier, password);
+                             
+                             // Re-run user profile creation
+                             await userService.createProfile({
+                                userId: result.UserSub!,
+                                email: identifier,
+                                name: name.trim(),
+                                encryptedDEK: encryptedDEK,
+                                kdfSalt: kdfSalt,
+                                kdfIterations: kdfIterations,
+                                kdfAlgorithm: "PBKDF2-HMAC-SHA256",
+                                createdAt: new Date().toISOString(),
+                            });
+                             
+                             return successResponse({ 
+                                verificationRequired: true, 
+                                userId: result.UserSub,
+                                message: "Account recreated. Verification code sent."
+                            }, correlationId);
+                        } else {
+                            // Within cooldown
+                            const remaining = Math.ceil(3 - diffInMinutes);
+                            return errorResponse("AccountExists", `Account verification pending. Please check your email or wait ${remaining} minutes to sign up again.`, correlationId, 400);
+                        }
+                    }
+                }
+             } catch (adminErr) {
+                 console.error("[SIGNUP] Failed to check/delete existing user:", adminErr);
+                 // Fall through to default error
+             }
+        }
+
+        return errorResponse(err.name || "InternalError", err.message, correlationId, err.$metadata?.httpStatusCode ?? 500);
     }
 }
 
@@ -122,25 +181,15 @@ export async function loginHandler(event: APIGatewayProxyEventV2): Promise<APIGa
         
         // Extract userId from ID token
         const idToken = result.AuthenticationResult?.IdToken;
-        if (!idToken) {
-            throw new Error("ID token not returned from Cognito");
-        }
+        if (!idToken) throw new Error("ID token not returned from Cognito");
         
-        // Parse JWT to get userId (sub claim)
-        // JWT format: header.payload.signature
         let userId: string;
         try {
             const parts = idToken.split('.');
-            if (parts.length !== 3) {
-                throw new Error("Invalid JWT format");
-            }
-            
+            if (parts.length !== 3) throw new Error("Invalid JWT format");
             const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
             userId = payload.sub;
-            
-            if (!userId) {
-                throw new Error("Missing 'sub' claim in JWT");
-            }
+            if (!userId) throw new Error("Missing 'sub' claim in JWT");
         } catch (jwtError: any) {
             console.error("JWT parsing error:", jwtError);
             throw new Error(`Failed to parse ID token: ${jwtError.message}`);
@@ -149,47 +198,23 @@ export async function loginHandler(event: APIGatewayProxyEventV2): Promise<APIGa
         // Fetch encryption parameters from DynamoDB
         const profile = await userService.getProfile(userId);
         if (!profile) {
-            // User authenticated in Cognito but no profile in DynamoDB
-            // This is a critical inconsistency
-            console.error("CRITICAL: User authenticated but profile not found:", userId);
-            return {
-                statusCode: 500,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "ProfileNotFound",
-                    message: "User profile not found. Please contact support.",
-                    userId,
-                    correlationId 
-                }),
-            };
+            return errorResponse("ProfileNotFound", "User profile not found. Please contact support.", correlationId, 500);
         }
         
-        return {
-            statusCode: 200,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ 
-                idToken,
-                accessToken: result.AuthenticationResult?.AccessToken,
-                refreshToken: result.AuthenticationResult?.RefreshToken,
-                expiresIn: result.AuthenticationResult?.ExpiresIn,
-                userId,
-                
-                // Zero-Knowledge Encryption Parameters
-                // Client uses these to derive Master Key and decrypt DEK
-                encryptedDEK: profile.encryptedDEK,
-                kdfSalt: profile.kdfSalt,
-                kdfIterations: profile.kdfIterations,
-                kdfAlgorithm: profile.kdfAlgorithm,
-                
-                correlationId 
-            }),
-        };
+        return successResponse({ 
+            idToken,
+            accessToken: result.AuthenticationResult?.AccessToken,
+            refreshToken: result.AuthenticationResult?.RefreshToken,
+            expiresIn: result.AuthenticationResult?.ExpiresIn,
+            userId,
+            encryptedDEK: profile.encryptedDEK,
+            kdfSalt: profile.kdfSalt,
+            kdfIterations: profile.kdfIterations,
+            kdfAlgorithm: profile.kdfAlgorithm
+        }, correlationId);
+
     } catch (err: any) {
-        return {
-            statusCode: err.$metadata?.httpStatusCode ?? 401,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
-        };
+        return errorResponse(err.name || "LoginFailed", err.message, correlationId, err.$metadata?.httpStatusCode ?? 401);
     }
 }
 
@@ -200,17 +225,9 @@ export async function confirmHandler(event: APIGatewayProxyEventV2): Promise<API
         const service = await getCognitoService();
         await service.confirmSignup(body.identifier, body.code);
         
-        return {
-            statusCode: 200,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ ok: true, message: "Account confirmed", correlationId }),
-        };
+        return successResponse({ message: "Account confirmed" }, correlationId);
     } catch (err: any) {
-        return {
-            statusCode: err.$metadata?.httpStatusCode ?? 400,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
-        };
+        return errorResponse(err.name || "ConfirmationFailed", err.message, correlationId, err.$metadata?.httpStatusCode ?? 400);
     }
 }
 
@@ -221,17 +238,9 @@ export async function resendCodeHandler(event: APIGatewayProxyEventV2): Promise<
         const service = await getCognitoService();
         await service.resendConfirmationCode(body.identifier);
         
-        return {
-            statusCode: 200,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ ok: true, message: "Verification code resent", correlationId }),
-        };
+        return successResponse({ message: "Verification code resent" }, correlationId);
     } catch (err: any) {
-        return {
-            statusCode: err.$metadata?.httpStatusCode ?? 400,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
-        };
+        return errorResponse(err.name || "ResendFailed", err.message, correlationId, err.$metadata?.httpStatusCode ?? 400);
     }
 }
 
@@ -242,17 +251,9 @@ export async function forgotPasswordHandler(event: APIGatewayProxyEventV2): Prom
         const service = await getCognitoService();
         await service.forgotPassword(body.identifier);
         
-        return {
-            statusCode: 200,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ ok: true, message: "Password reset code sent", correlationId }),
-        };
+        return successResponse({ message: "Password reset code sent" }, correlationId);
     } catch (err: any) {
-        return {
-            statusCode: err.$metadata?.httpStatusCode ?? 400,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
-        };
+        return errorResponse(err.name || "ForgotPasswordFailed", err.message, correlationId, err.$metadata?.httpStatusCode ?? 400);
     }
 }
 
@@ -263,16 +264,8 @@ export async function resetPasswordHandler(event: APIGatewayProxyEventV2): Promi
         const service = await getCognitoService();
         await service.confirmForgotPassword(body.identifier, body.code, body.newPassword);
         
-        return {
-            statusCode: 200,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ ok: true, message: "Password reset successful", correlationId }),
-        };
+        return successResponse({ message: "Password reset successful" }, correlationId);
     } catch (err: any) {
-        return {
-            statusCode: err.$metadata?.httpStatusCode ?? 400,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
-        };
+        return errorResponse(err.name || "ResetPasswordFailed", err.message, correlationId, err.$metadata?.httpStatusCode ?? 400);
     }
 }

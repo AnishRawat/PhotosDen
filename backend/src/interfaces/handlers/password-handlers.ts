@@ -42,21 +42,26 @@ async function getCognitoService() {
  * 
  * Security: DEK never changes, only its encryption wrapper
  */
+// Helper to return standardized 200 OK responses
+const successResponse = (body: any, correlationId: string) => ({
+    statusCode: 200,
+    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+    body: JSON.stringify({ success: true, ...body, correlationId }),
+});
+
+const errorResponse = (error: string, message: string, correlationId: string, statusCode: number = 200) => ({
+    statusCode: 200,
+    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+    body: JSON.stringify({ success: false, error, message, correlationId, originalStatus: statusCode }),
+});
+
 export async function changePasswordHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
     const correlationId = correlationIdFrom(event);
     
     // Verify JWT token
     const authResult = await verifyToken(event);
     if (!authResult.authorized) {
-        return {
-            statusCode: 401,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({
-                error: "Unauthorized",
-                message: authResult.error || "Invalid or missing authentication token",
-                correlationId,
-            }),
-        };
+        return errorResponse("Unauthorized", authResult.error || "Invalid or missing authentication token", correlationId, 401);
     }
     
     try {
@@ -65,55 +70,23 @@ export async function changePasswordHandler(event: APIGatewayProxyEventV2): Prom
         
         // Validate required parameters
         if (!oldPassword || !newPassword || !newEncryptedDEK || !newKdfSalt || typeof newKdfIterations !== 'number') {
-            return {
-                statusCode: 400,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "BadRequest",
-                    message: "Required: oldPassword, newPassword, newEncryptedDEK, newKdfSalt, newKdfIterations",
-                    correlationId 
-                }),
-            };
+            return errorResponse("BadRequest", "Required: oldPassword, newPassword, newEncryptedDEK, newKdfSalt, newKdfIterations", correlationId, 400);
         }
         
         // Validate KDF iterations (security threshold)
         if (newKdfIterations < 100000) {
-            return {
-                statusCode: 400,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "BadRequest",
-                    message: "kdfIterations must be >= 100,000 for security",
-                    correlationId 
-                }),
-            };
+            return errorResponse("BadRequest", "kdfIterations must be >= 100,000 for security", correlationId, 400);
         }
         
         // Validate password strength (basic check)
-        if (newPassword.length < 8) {
-            return {
-                statusCode: 400,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "BadRequest",
-                    message: "New password must be at least 8 characters",
-                    correlationId 
-                }),
-            };
+        if (newPassword.length < 12) {
+            return errorResponse("BadRequest", "New password must be at least 12 characters", correlationId, 400);
         }
         
         // Extract access token from Authorization header
         const authHeader = event.headers?.authorization || event.headers?.Authorization;
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return {
-                statusCode: 401,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "Unauthorized",
-                    message: "Access token required in Authorization header",
-                    correlationId 
-                }),
-            };
+            return errorResponse("Unauthorized", "Access token required in Authorization header", correlationId, 401);
         }
         
         const accessToken = authHeader.substring(7); // Remove "Bearer "
@@ -121,15 +94,7 @@ export async function changePasswordHandler(event: APIGatewayProxyEventV2): Prom
         // Get user profile
         const profile = await userService.getProfile(authResult.userId!);
         if (!profile) {
-            return {
-                statusCode: 404,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "NotFound",
-                    message: "User profile not found",
-                    correlationId 
-                }),
-            };
+            return errorResponse("NotFound", "User profile not found", correlationId, 404);
         }
         
         const cognitoClient = new CognitoIdentityProviderClient({});
@@ -137,7 +102,6 @@ export async function changePasswordHandler(event: APIGatewayProxyEventV2): Prom
         
         try {
             // PHASE 1: Change password in Cognito
-            // This validates old password automatically
             await cognitoClient.send(new ChangePasswordCommand({
                 AccessToken: accessToken,
                 PreviousPassword: oldPassword,
@@ -147,7 +111,6 @@ export async function changePasswordHandler(event: APIGatewayProxyEventV2): Prom
             passwordChanged = true;
             
             // PHASE 2: Update DynamoDB atomically
-            // This re-encrypts DEK with new Master Key derived from new password
             await userService.updateEncryptionParams(
                 authResult.userId!,
                 newEncryptedDEK,
@@ -155,19 +118,10 @@ export async function changePasswordHandler(event: APIGatewayProxyEventV2): Prom
                 newKdfIterations
             );
             
-            return {
-                statusCode: 200,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    message: "Password updated successfully. Please login again with your new password.",
-                    correlationId 
-                }),
-            };
+            return successResponse({ message: "Password updated successfully. Please login again with your new password." }, correlationId);
             
         } catch (err: any) {
             // CRITICAL ERROR: Password changed but DynamoDB update failed
-            // The user's DEK is now encrypted with the OLD Master Key but password is NEW
-            // This is UNRECOVERABLE without manual intervention
             if (passwordChanged) {
                 console.error("🚨 CRITICAL: Password changed in Cognito but DynamoDB update failed", {
                     userId: authResult.userId,
@@ -175,17 +129,7 @@ export async function changePasswordHandler(event: APIGatewayProxyEventV2): Prom
                     correlationId
                 });
                 
-                // Return special error code for client to handle
-                return {
-                    statusCode: 500,
-                    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                    body: JSON.stringify({ 
-                        error: "PartialFailure",
-                        message: "Password was changed but encryption parameters update failed. Please contact support immediately.",
-                        userId: authResult.userId,
-                        correlationId 
-                    }),
-                };
+                return errorResponse("PartialFailure", "Password was changed but encryption parameters update failed. Please contact support immediately.", correlationId, 500);
             }
             
             throw err;
@@ -194,39 +138,15 @@ export async function changePasswordHandler(event: APIGatewayProxyEventV2): Prom
     } catch (err: any) {
         // Handle Cognito errors
         if (err.name === "NotAuthorizedException") {
-            return {
-                statusCode: 401,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "Unauthorized",
-                    message: "Incorrect old password or session expired",
-                    correlationId 
-                }),
-            };
+            return errorResponse("Unauthorized", "Incorrect old password or session expired", correlationId, 401);
         }
         
         if (err.name === "InvalidPasswordException") {
-            return {
-                statusCode: 400,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "InvalidPassword",
-                    message: err.message || "New password does not meet requirements",
-                    correlationId 
-                }),
-            };
+            return errorResponse("InvalidPassword", err.message || "New password does not meet requirements", correlationId, 400);
         }
         
         if (err.name === "LimitExceededException") {
-            return {
-                statusCode: 429,
-                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-                body: JSON.stringify({ 
-                    error: "TooManyRequests",
-                    message: "Too many password change attempts. Please try again later.",
-                    correlationId 
-                }),
-            };
+            return errorResponse("TooManyRequests", "Too many password change attempts. Please try again later.", correlationId, 429);
         }
         
         console.error("Password change error:", {
@@ -236,14 +156,6 @@ export async function changePasswordHandler(event: APIGatewayProxyEventV2): Prom
             correlationId
         });
         
-        return {
-            statusCode: err.$metadata?.httpStatusCode ?? 500,
-            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ 
-                error: err.name || "InternalError",
-                message: err.message || "Password change failed",
-                correlationId 
-            }),
-        };
+        return errorResponse(err.name || "InternalError", err.message || "Password change failed", correlationId, err.$metadata?.httpStatusCode ?? 500);
     }
 }

@@ -55,3 +55,5 @@ backend/function.zip
 # Credentials managed by Parameter Store, but just in case:
 secrets.json
 commands.md
+.idea
+.vscode/

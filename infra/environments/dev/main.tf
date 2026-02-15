@@ -21,6 +21,7 @@ module "iam" {
   project_name     = var.project_name
   environment      = var.environment
   aws_region       = var.aws_region
+  user_pool_id     = module.cognito.user_pool_id
   lambda_role_name = "" # This will be unused inside the module itself for its own role creation
 }
 

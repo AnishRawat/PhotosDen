@@ -58,6 +58,32 @@ resource "aws_iam_role_policy_attachment" "lambda_dynamodb_attach" {
   policy_arn = aws_iam_policy.lambda_dynamodb.arn
 }
 
+# Cognito User Management (For Signup Retry Logic)
+data "aws_iam_policy_document" "lambda_cognito_admin" {
+  statement {
+    sid    = "AllowLambdaCognitoAdminActions"
+    effect = "Allow"
+    actions = [
+      "cognito-idp:AdminGetUser",
+      "cognito-idp:AdminDeleteUser"
+    ]
+    resources = [
+      "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/${var.user_pool_id}"
+    ]
+  }
+}
+
+resource "aws_iam_policy" "lambda_cognito_admin" {
+  name        = "${var.project_name}-${var.environment}-lambda-cognito-admin"
+  description = "Allow Lambda to manage users in Cognito for ${var.environment}"
+  policy      = data.aws_iam_policy_document.lambda_cognito_admin.json
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_cognito_admin_attach" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = aws_iam_policy.lambda_cognito_admin.arn
+}
+
 variable "lambda_role_name" {
   type    = string
   default = ""

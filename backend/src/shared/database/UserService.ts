@@ -3,6 +3,7 @@ import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from "@
 export interface UserProfile {
     userId: string;
     email: string;
+    name: string; // Added name field
     phone?: string;
     avatarUrl?: string;
     

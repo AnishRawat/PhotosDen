@@ -6,6 +6,8 @@ import {
     ResendConfirmationCodeCommand,
     ForgotPasswordCommand,
     ConfirmForgotPasswordCommand,
+    AdminGetUserCommand,
+    AdminDeleteUserCommand,
     AuthFlowType
 } from "@aws-sdk/client-cognito-identity-provider";
 
@@ -86,6 +88,24 @@ export class CognitoService {
             Username: identifier,
             ConfirmationCode: code,
             Password: newPassword,
+        });
+
+        return await this.client.send(command);
+    }
+
+    async adminGetUser(username: string) {
+        const command = new AdminGetUserCommand({
+            UserPoolId: process.env.COGNITO_USER_POOL_ID, // Use Pool ID from environment
+            Username: username,
+        });
+
+        return await this.client.send(command);
+    }
+
+    async adminDeleteUser(username: string) {
+        const command = new AdminDeleteUserCommand({
+            UserPoolId: process.env.COGNITO_USER_POOL_ID,
+            Username: username,
         });
 
         return await this.client.send(command);
