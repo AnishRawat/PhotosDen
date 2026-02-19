@@ -1,7 +1,9 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { AlbumService } from "../../shared/database/AlbumService.js";
+import { DynamoDBDocumentClient, BatchGetCommand } from "@aws-sdk/lib-dynamodb";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { AlbumService, Album } from "../../shared/database/AlbumService.js";
 import { DEFAULT_CORS_HEADERS } from "../../shared/http/cors.js";
 import { verifyToken } from "../../shared/auth/jwt-verifier.js";
 
@@ -11,11 +13,39 @@ function correlationIdFrom(event: APIGatewayProxyEventV2): string {
 
 const DEFAULT_HEADERS = DEFAULT_CORS_HEADERS;
 
-// Initialize DynamoDB client
+// Initialize clients
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
+const s3Client = new S3Client({});
+
 const tableName = process.env.DYNAMODB_TABLE_NAME || "photosden-store-dev";
+const bucketName = process.env.S3_BUCKET_NAME || "photosden-uploads-dev";
+
 const albumService = new AlbumService(docClient, tableName);
+
+/**
+ * Helper to enrich album with presigned cover photo URL
+ */
+async function enrichAlbumWithCoverUrl(album: Album): Promise<Album & { coverPhotoUrl?: string }> {
+    if (!album.coverPhotoKey) {
+        return album;
+    }
+
+    try {
+        const command = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: album.coverPhotoKey,
+        });
+        
+        // Generate presigned URL valid for 1 hour
+        const coverPhotoUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        
+        return { ...album, coverPhotoUrl };
+    } catch (err) {
+        console.error(`Failed to generate signed URL for cover ${album.coverPhotoKey}:`, err);
+        return album;
+    }
+}
 
 export async function createAlbumHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
     const correlationId = correlationIdFrom(event);
@@ -45,6 +75,24 @@ export async function createAlbumHandler(event: APIGatewayProxyEventV2): Promise
                 body: JSON.stringify({
                     error: "BadRequest",
                     message: "Title is required",
+                    correlationId,
+                }),
+            };
+        }
+
+        // Check for duplicate album name (case-insensitive, per user)
+        const existingAlbums = await albumService.listAlbums(authResult.userId!);
+        const isDuplicate = existingAlbums.some(
+            (a) => a.title.trim().toLowerCase() === title.trim().toLowerCase()
+        );
+
+        if (isDuplicate) {
+            return {
+                statusCode: 409,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({
+                    error: "Conflict",
+                    message: "An album with this name already exists",
                     correlationId,
                 }),
             };
@@ -92,10 +140,13 @@ export async function listAlbumsHandler(event: APIGatewayProxyEventV2): Promise<
         // List all albums for authenticated user
         const albums = await albumService.listAlbums(authResult.userId!);
 
+        // Enrich albums with cover URLs in parallel
+        const enrichedAlbums = await Promise.all(albums.map(enrichAlbumWithCoverUrl));
+
         return {
             statusCode: 200,
             headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify({ items: albums }),
+            body: JSON.stringify({ items: enrichedAlbums }),
         };
     } catch (err: any) {
         console.error("Error listing albums:", err);
@@ -155,10 +206,12 @@ export async function getAlbumHandler(event: APIGatewayProxyEventV2): Promise<AP
             };
         }
 
+        const enrichedAlbum = await enrichAlbumWithCoverUrl(album);
+
         return {
             statusCode: 200,
             headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
-            body: JSON.stringify(album),
+            body: JSON.stringify(enrichedAlbum),
         };
     } catch (err: any) {
         console.error("Error getting album:", err);
@@ -284,7 +337,38 @@ export async function updateAlbumPhotosHandler(event: APIGatewayProxyEventV2): P
 
         // Add photos
         if (add.length > 0) {
-            await albumService.addPhotosToAlbum(authResult.userId!, albumId, add);
+            // We need to fetch the S3 keys for these photos to store in the album-photo relation
+            // This also verifies the photos exist and belong to the user
+            const keys: { [key: string]: any }[] = add.map((photoId: string) => ({
+                PK: `USER#${authResult.userId}`,
+                SK: `PHOTO#${photoId}`
+            }));
+
+            // BatchGetItem has a limit of 100 items, we assume 'add' list is reasonable size for now
+            // Production code should handle chunking
+            const batchCommand = new BatchGetCommand({
+                RequestItems: {
+                    [tableName]: { Keys: keys }
+                }
+            });
+
+            const result = await docClient.send(batchCommand);
+            const foundPhotos = result.Responses?.[tableName] || [];
+            
+            if (foundPhotos.length !== add.length) {
+                // Some photos were not found or don't belong to valid user
+                // We'll proceed with only the valid ones
+                console.warn(`Requested to add ${add.length} photos but found ${foundPhotos.length}`);
+            }
+
+            const validPhotos = foundPhotos.map(item => ({
+                photoId: item.SK.replace('PHOTO#', ''),
+                s3Key: item.s3Key
+            }));
+
+            if (validPhotos.length > 0) {
+                await albumService.addPhotosToAlbum(authResult.userId!, albumId, validPhotos);
+            }
         }
 
         // Remove photos
@@ -296,7 +380,7 @@ export async function updateAlbumPhotosHandler(event: APIGatewayProxyEventV2): P
             statusCode: 200,
             headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
             body: JSON.stringify({ 
-                message: `Album ${albumId} updated: added ${add.length} photos, removed ${remove.length} photos`,
+                message: `Album ${albumId} updated`,
                 correlationId 
             }),
         };

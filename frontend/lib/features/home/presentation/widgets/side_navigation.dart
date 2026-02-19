@@ -36,54 +36,61 @@ class SideNavigation extends StatelessWidget {
           
           // Navigation Items
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
               children: [
-                _NavItem(
-                  icon: Icons.photo_library_outlined,
-                  selectedIcon: Icons.photo_library,
-                  label: 'Photos',
-                  isSelected: selectedIndex == 0,
-                  onTap: () => onDestinationSelected(0),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    children: [
+                      _NavItem(
+                        icon: Icons.photo_library_outlined,
+                        selectedIcon: Icons.photo_library,
+                        label: 'Photos',
+                        isSelected: selectedIndex == 0,
+                        onTap: () => onDestinationSelected(0),
+                      ),
+                      _NavItem(
+                        icon: Icons.folder_outlined,
+                        selectedIcon: Icons.folder,
+                        label: 'Albums',
+                        isSelected: selectedIndex == 1,
+                        onTap: () => onDestinationSelected(1),
+                      ),
+                      _NavItem(
+                        icon: Icons.favorite_border,
+                        selectedIcon: Icons.favorite,
+                        label: 'Favorites',
+                        isSelected: selectedIndex == 2,
+                        onTap: () => onDestinationSelected(2),
+                      ),
+                      _NavItem(
+                        icon: Icons.share_outlined,
+                        selectedIcon: Icons.share,
+                        label: 'Sharing',
+                        isSelected: selectedIndex == 3,
+                        onTap: () => onDestinationSelected(3),
+                      ),
+                      const Divider(height: 32, indent: 16, endIndent: 16),
+                      _NavItem(
+                        icon: Icons.delete_outline,
+                        selectedIcon: Icons.delete,
+                        label: 'Trash',
+                        isSelected: selectedIndex == 4,
+                        onTap: () => onDestinationSelected(4),
+                      ),
+                    ],
+                  ),
                 ),
-                _NavItem(
-                  icon: Icons.folder_outlined,
-                  selectedIcon: Icons.folder,
-                  label: 'Albums',
-                  isSelected: selectedIndex == 1,
-                  onTap: () => onDestinationSelected(1),
-                ),
-                _NavItem(
-                  icon: Icons.favorite_border,
-                  selectedIcon: Icons.favorite,
-                  label: 'Favorites',
-                  isSelected: selectedIndex == 2,
-                  onTap: () => onDestinationSelected(2),
-                ),
-                _NavItem(
-                  icon: Icons.share_outlined,
-                  selectedIcon: Icons.share,
-                  label: 'Sharing',
-                  isSelected: selectedIndex == 3,
-                  onTap: () => onDestinationSelected(3),
-                ),
-                const Divider(height: 32, indent: 16, endIndent: 16),
-                _NavItem(
-                  icon: Icons.delete_outline,
-                  selectedIcon: Icons.delete,
-                  label: 'Trash',
-                  isSelected: selectedIndex == 4,
-                  onTap: () => onDestinationSelected(4),
-                ),
-                
-                const Spacer(), // Push Logout to bottom of list area
-                
-                _NavItem(
-                  icon: Icons.logout_rounded,
-                  selectedIcon: Icons.logout_rounded,
-                  label: 'Sign Out',
-                  isSelected: false,
-                  onTap: onLogout,
+                // Logout at the bottom of the navigation area
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: _NavItem(
+                    icon: Icons.logout_rounded,
+                    selectedIcon: Icons.logout_rounded,
+                    label: 'Sign Out',
+                    isSelected: false,
+                    onTap: onLogout,
+                  ),
                 ),
               ],
             ),

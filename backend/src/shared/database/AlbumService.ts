@@ -5,6 +5,8 @@ export interface Album {
     userId: string;
     title: string;
     description?: string;
+    coverPhotoKey?: string; // S3 key for the cover photo
+    photoCount: number;
     isDeleted: boolean;
     deletedAt?: string;
     purgeAt?: number;  // TTL in epoch seconds
@@ -15,6 +17,7 @@ export interface Album {
 export interface AlbumPhoto {
     albumId: string;
     photoId: string;
+    s3Key: string;
     addedAt: string;
 }
 
@@ -37,6 +40,7 @@ export class AlbumService {
             userId,
             title,
             description: description || "",
+            photoCount: 0,
             isDeleted: false,
             createdAt: now,
             updatedAt: now
@@ -155,33 +159,40 @@ export class AlbumService {
     /**
      * Add photos to an album
      */
-    async addPhotosToAlbum(userId: string, albumId: string, photoIds: string[]): Promise<void> {
-        // Store album-photo associations
+    async addPhotosToAlbum(userId: string, albumId: string, photos: { photoId: string, s3Key: string }[]): Promise<void> {
+        if (photos.length === 0) return;
+
         const now = new Date().toISOString();
         
-        for (const photoId of photoIds) {
+        // 1. Add album-photo associations
+        for (const photo of photos) {
             const command = new PutCommand({
                 TableName: this.tableName,
                 Item: {
                     PK: `USER#${userId}`,
-                    SK: `ALBUM#${albumId}#PHOTO#${photoId}`,
+                    SK: `ALBUM#${albumId}#PHOTO#${photo.photoId}`,
                     albumId,
-                    photoId,
+                    photoId: photo.photoId,
+                    s3Key: photo.s3Key,
                     addedAt: now,
                 },
             });
             await this.client.send(command);
         }
 
-        // Update album's updatedAt timestamp
+        // 2. Update album metadata (photoCount, coverPhotoKey, updatedAt)
+        // We use an atomic counter for photoCount
+        // We set coverPhotoKey ONLY if it doesn't exist (if_not_exists)
         const updateCommand = new UpdateCommand({
             TableName: this.tableName,
             Key: {
                 PK: `USER#${userId}`,
                 SK: `ALBUM#${albumId}`,
             },
-            UpdateExpression: "SET updatedAt = :updatedAt",
+            UpdateExpression: "SET photoCount = photoCount + :inc, coverPhotoKey = if_not_exists(coverPhotoKey, :cover), updatedAt = :updatedAt",
             ExpressionAttributeValues: {
+                ":inc": photos.length,
+                ":cover": photos[0].s3Key, // Use the first new photo as cover if none exists
                 ":updatedAt": now,
             },
         });
@@ -192,7 +203,9 @@ export class AlbumService {
      * Remove photos from an album
      */
     async removePhotosFromAlbum(userId: string, albumId: string, photoIds: string[]): Promise<void> {
-        // Delete album-photo associations
+        if (photoIds.length === 0) return;
+
+        // 1. Delete album-photo associations
         for (const photoId of photoIds) {
             const command = new DeleteCommand({
                 TableName: this.tableName,
@@ -204,15 +217,18 @@ export class AlbumService {
             await this.client.send(command);
         }
 
-        // Update album's updatedAt timestamp
+        // 2. Update album metadata (photoCount, updatedAt)
+        // Note: We don't automatically unset/change coverPhotoKey here to avoid complex logic.
+        // If the cover photo is removed, it will just be a broken link or we can handle it in a separate "setCover" action.
         const updateCommand = new UpdateCommand({
             TableName: this.tableName,
             Key: {
                 PK: `USER#${userId}`,
                 SK: `ALBUM#${albumId}`,
             },
-            UpdateExpression: "SET updatedAt = :updatedAt",
+            UpdateExpression: "SET photoCount = photoCount - :dec, updatedAt = :updatedAt",
             ExpressionAttributeValues: {
+                ":dec": photoIds.length,
                 ":updatedAt": new Date().toISOString(),
             },
         });

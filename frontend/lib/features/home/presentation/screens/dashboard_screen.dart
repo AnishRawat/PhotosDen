@@ -162,7 +162,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return MainWebLayout(
       selectedIndex: _selectedIndex,
       onDestinationSelected: (index) {
-        setState(() => _selectedIndex = index);
+        if (index == 1) {
+          context.go('/albums');
+        } else {
+          setState(() => _selectedIndex = index);
+        }
       },
       onLogout: _logout,
       child: Scaffold(

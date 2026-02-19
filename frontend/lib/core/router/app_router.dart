@@ -5,6 +5,8 @@ import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/home/presentation/screens/dashboard_screen.dart';
 import '../../features/auth/presentation/screens/signup_screen.dart';
 import '../../features/auth/presentation/screens/verify_otp_screen.dart';
+import '../../features/albums/presentation/screens/albums_screen.dart';
+import '../../features/albums/presentation/screens/album_detail_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -34,6 +36,19 @@ final GoRouter appRouter = GoRouter(
         final email = state.extra as String? ?? '';
         return VerifyOtpScreen(email: email);
       },
+    ),
+    GoRoute(
+      path: '/albums',
+      builder: (context, state) => const AlbumsScreen(),
+      routes: [
+        GoRoute(
+          path: ':id',
+          builder: (context, state) {
+            final id = state.pathParameters['id'] ?? '';
+            return AlbumDetailScreen(albumId: id);
+          },
+        ),
+      ],
     ),
   ],
 );
