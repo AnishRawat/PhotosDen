@@ -7,6 +7,8 @@ export interface Upload {
     totalPhotos: number;
     uploadedPhotos: number;
     isDeleted: boolean;
+    source: "library" | "album";   // origin of the upload
+    albumId?: string;              // set when source === 'album'
     createdAt: string;
     updatedAt: string;
     completedAt?: string;
@@ -33,7 +35,13 @@ export class UploadService {
     /**
      * Create a new upload batch
      */
-    async createUpload(userId: string, uploadId: string, photoCount: number): Promise<Upload> {
+    async createUpload(
+        userId: string,
+        uploadId: string,
+        photoCount: number,
+        source: "library" | "album" = "library",
+        albumId?: string,
+    ): Promise<Upload> {
         const now = new Date().toISOString();
         const upload: Upload = {
             uploadId,
@@ -42,6 +50,8 @@ export class UploadService {
             totalPhotos: photoCount,
             uploadedPhotos: 0,
             isDeleted: false,
+            source,
+            ...(albumId ? { albumId } : {}),
             createdAt: now,
             updatedAt: now,
         };

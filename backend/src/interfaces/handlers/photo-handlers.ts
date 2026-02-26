@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, DeleteCommand, UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, DeleteCommand, UpdateCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DEFAULT_CORS_HEADERS } from "../../shared/http/cors.js";
@@ -274,6 +274,148 @@ export async function deletePhotoHandler(event: APIGatewayProxyEventV2): Promise
         }
 
         console.error("Error deleting photo:", err);
+        return {
+            statusCode: 500,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
+        };
+    }
+}
+
+/**
+ * Toggle isFavorite flag on a photo.
+ * PUT /photos/:photoId/favorite
+ * Body: { isFavorite: boolean }  — if omitted, flips the current value.
+ */
+export async function toggleFavoriteHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+    const correlationId = correlationIdFrom(event);
+
+    const authResult = await verifyToken(event);
+    if (!authResult.authorized) {
+        return {
+            statusCode: 401,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ error: "Unauthorized", message: authResult.error, correlationId }),
+        };
+    }
+
+    try {
+        const photoId = event.pathParameters?.photoId;
+        if (!photoId) {
+            return {
+                statusCode: 400,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({ error: "BadRequest", message: "photoId is required", correlationId }),
+            };
+        }
+
+        // Fetch current state
+        const getResult = await docClient.send(new GetCommand({
+            TableName: tableName,
+            Key: { PK: `USER#${authResult.userId}`, SK: `PHOTO#${photoId}` },
+        }));
+
+        if (!getResult.Item || getResult.Item.isDeleted) {
+            return {
+                statusCode: 404,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({ error: "NotFound", message: "Photo not found", correlationId }),
+            };
+        }
+
+        // Determine new value: use body override, otherwise flip
+        let newFavorite: boolean;
+        try {
+            const body = JSON.parse(event.body ?? "{}");
+            newFavorite = typeof body.isFavorite === "boolean" ? body.isFavorite : !getResult.Item.isFavorite;
+        } catch {
+            newFavorite = !getResult.Item.isFavorite;
+        }
+
+        await docClient.send(new UpdateCommand({
+            TableName: tableName,
+            Key: { PK: `USER#${authResult.userId}`, SK: `PHOTO#${photoId}` },
+            UpdateExpression: "SET isFavorite = :fav, updatedAt = :now",
+            ExpressionAttributeValues: { ":fav": newFavorite, ":now": new Date().toISOString() },
+        }));
+
+        return {
+            statusCode: 200,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ photoId, isFavorite: newFavorite, correlationId }),
+        };
+    } catch (err: any) {
+        console.error("Error toggling favorite:", err);
+        return {
+            statusCode: 500,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
+        };
+    }
+}
+
+/**
+ * List all favorite photos for the authenticated user.
+ * GET /photos/favorites
+ */
+export async function listFavoritesHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+    const correlationId = correlationIdFrom(event);
+
+    const authResult = await verifyToken(event);
+    if (!authResult.authorized) {
+        return {
+            statusCode: 401,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ error: "Unauthorized", message: authResult.error, correlationId }),
+        };
+    }
+
+    try {
+        // Query all PHOTO# items for this user
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "isFavorite = :fav AND (attribute_not_exists(isDeleted) OR isDeleted = :notDeleted)",
+            ExpressionAttributeValues: {
+                ":pk": `USER#${authResult.userId}`,
+                ":sk": "PHOTO#",
+                ":fav": true,
+                ":notDeleted": false,
+            },
+        }));
+
+        const photos = result.Items ?? [];
+
+        // Enrich with presigned thumbnail URLs
+        const enriched = await Promise.all(
+            photos.map(async (photo) => {
+                let thumbnailDownloadUrl: string | undefined;
+                if (photo.thumbnailS3Key) {
+                    try {
+                        thumbnailDownloadUrl = await getSignedUrl(
+                            s3Client,
+                            new GetObjectCommand({ Bucket: bucketName, Key: photo.thumbnailS3Key }),
+                            { expiresIn: 3600 }
+                        );
+                    } catch { /* ignore */ }
+                }
+                return {
+                    photoId: photo.SK?.replace("PHOTO#", "") ?? photo.photoId,
+                    originalFilename: photo.originalFilename,
+                    capturedAt: photo.capturedAt,
+                    isFavorite: true,
+                    thumbnailDownloadUrl,
+                };
+            })
+        );
+
+        return {
+            statusCode: 200,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ items: enriched, correlationId }),
+        };
+    } catch (err: any) {
+        console.error("Error listing favorites:", err);
         return {
             statusCode: 500,
             headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },

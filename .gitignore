@@ -57,3 +57,5 @@ secrets.json
 commands.md
 .idea
 .vscode/
+.implementation-plan-billing-wallet.md
+.infra/environments/dev/schema.json

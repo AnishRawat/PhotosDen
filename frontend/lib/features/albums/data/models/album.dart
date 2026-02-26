@@ -1,6 +1,6 @@
 class Album {
-  final String id; // Maps to 'albumId' from backend
-  final String name; // Maps to 'title' from backend
+  final String id;
+  final String name;
   final String? coverPhotoUrl;
   final int photoCount;
   final DateTime createdAt;
@@ -15,9 +15,7 @@ class Album {
 
   factory Album.fromJson(Map<String, dynamic> json) {
     return Album(
-      // Handle both 'albumId' (backend) and 'id' (legacy/frontend model)
       id: json['albumId'] ?? json['id'] ?? '',
-      // Handle 'title' (backend) and 'name' (legacy/frontend model)
       name: json['title'] ?? json['name'] ?? 'Untitled Album',
       coverPhotoUrl: json['coverPhotoUrl'],
       photoCount: json['photoCount'] ?? 0,
@@ -37,3 +35,28 @@ class Album {
     };
   }
 }
+
+/// Represents a photo that belongs to an album.
+class AlbumPhoto {
+  final String photoId;
+  final String? thumbnailUrl;
+  final String originalFilename;
+  final String? addedAt;
+
+  AlbumPhoto({
+    required this.photoId,
+    this.thumbnailUrl,
+    this.originalFilename = '',
+    this.addedAt,
+  });
+
+  factory AlbumPhoto.fromJson(Map<String, dynamic> json) {
+    return AlbumPhoto(
+      photoId: json['photoId'] ?? '',
+      thumbnailUrl: json['thumbnailDownloadUrl'] ?? json['thumbnailUrl'],
+      originalFilename: json['originalFilename'] ?? '',
+      addedAt: json['addedAt'],
+    );
+  }
+}
+

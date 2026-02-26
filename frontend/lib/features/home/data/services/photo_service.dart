@@ -22,36 +22,21 @@ class PhotoService {
   );
 
   /// Fetch user photos (E2EE)
-  /// 
-  /// 1. List uploads
-  /// 2. Get photos for each upload
-  /// 3. Flatten list
-  /// 
-  /// Note: In a real app, this would be paginated and optimized.
   Future<List<Photo>> getPhotos() async {
     try {
       final response = await _networkService.dio.get(ApiConstants.uploads);
       final items = response.data['items'] as List;
 
-      // For simplicity in this demo, we'll fetch details for the first 5 uploads
-      // to avoid making too many requests at once.
-      // A scalable solution would be a dedicated "feed" endpoint or pagination.
-      
       List<Photo> allPhotos = [];
-      
-      for (var upload in items.take(5)) { // Limit to 5 uploads for demo
+
+      for (var upload in items.take(5)) {
         final uploadId = upload['uploadId'];
-        
-        // Fetch upload details (list of photos in upload)
         final photosResponse = await _networkService.dio.get('${ApiConstants.uploads}/$uploadId');
         final photosList = photosResponse.data['items'] as List;
-        
+
         for (var p in photosList) {
           try {
-            // Fetch individual photo details to get Presigned URL
-            // because `getUploadPhotos` might only return metadata/keys, not signed URLs.
-            // Based on `photo-handlers.ts`, `GET /photos/:id` returns `downloadUrl` and `thumbnailDownloadUrl`.
-            final photoId = p['photoId']; // Assuming photoId is available here
+            final photoId = p['photoId'];
             if (photoId != null) {
               final signedResponse = await _networkService.dio.get('/photos/$photoId');
               allPhotos.add(Photo.fromJson(signedResponse.data));
@@ -61,11 +46,34 @@ class PhotoService {
           }
         }
       }
-      
+
       return allPhotos;
     } catch (e) {
       print('Error getting photos: $e');
       return [];
+    }
+  }
+
+  /// Fetch only favorited photos for the current user.
+  Future<List<Photo>> getFavoritePhotos() async {
+    try {
+      final response = await _networkService.dio.get('/photos/favorites');
+      final items = response.data['items'] as List? ?? [];
+      return items.map((e) => Photo.fromJson(e)).toList();
+    } catch (e) {
+      print('Error getting favorite photos: $e');
+      rethrow;
+    }
+  }
+
+  /// Toggle isFavorite on a photo. Returns the new isFavorite value.
+  Future<bool> toggleFavorite(String photoId) async {
+    try {
+      final response = await _networkService.dio.put('/photos/$photoId/favorite');
+      return response.data['isFavorite'] as bool? ?? false;
+    } catch (e) {
+      print('Error toggling favorite for $photoId: $e');
+      rethrow;
     }
   }
 
@@ -82,18 +90,12 @@ class PhotoService {
       List<EncryptedFile> encryptedFiles = [];
       List<EncryptedFile?> encryptedThumbnails = [];
 
-      // 1. Encrypt all files locally
       for (var file in files) {
         final bytes = await file.readAsBytes();
-        
-        // Generate Thumbnail
         final thumbBytes = _cryptoService.generateThumbnail(bytes);
-        
-        // Encrypt Original
         final encrypted = await _cryptoService.encryptFile(bytes, dek);
         encryptedFiles.add(encrypted);
 
-        // Encrypt Thumbnail (if exists)
         EncryptedFile? encryptedThumb;
         if (thumbBytes != null) {
           encryptedThumb = await _cryptoService.encryptFile(thumbBytes, dek);
@@ -102,7 +104,7 @@ class PhotoService {
 
         photoMetadata.add({
           'originalFilename': file.name,
-          'mimeType': 'image/jpeg', // Assume JPEG for demo/simplicity
+          'mimeType': 'image/jpeg',
           'encryptedSize': encrypted.encryptedSize,
           'iv': encrypted.nonce,
           'hasThumbnail': encryptedThumb != null,
@@ -111,22 +113,19 @@ class PhotoService {
         });
       }
 
-      // 2. Initiate Upload
       final initResponse = await _networkService.dio.post(
         ApiConstants.uploads,
         data: {'photos': photoMetadata},
       );
-      
+
       final uploadId = initResponse.data['uploadId'];
       final presignedUrls = initResponse.data['photos'] as List;
 
-      // 3. Upload Encrypted Blobs to S3
       for (int i = 0; i < presignedUrls.length; i++) {
         final urlData = presignedUrls[i];
         final encryptedFile = encryptedFiles[i];
         final encryptedThumb = encryptedThumbnails[i];
 
-        // Upload Original
         await Dio().put(
           urlData['presignedUrl'],
           data: Stream.fromIterable([encryptedFile.encryptedBytes]),
@@ -138,7 +137,6 @@ class PhotoService {
           ),
         );
 
-        // Upload Thumbnail
         if (encryptedThumb != null && urlData['thumbnailPresignedUrl'] != null) {
           await Dio().put(
             urlData['thumbnailPresignedUrl'],
@@ -153,19 +151,12 @@ class PhotoService {
         }
       }
 
-      // 4. Complete Upload
       await _networkService.dio.post('${ApiConstants.uploads}/$uploadId/complete');
-
     } catch (e) {
       print('Upload failed: $e');
-      
-      // DEMO FALLBACK
-      // If upload fails (e.g. backend down), wait 2 seconds and pretend it worked
       await Future.delayed(const Duration(seconds: 2));
       print('Simulating successful upload for demo...');
-      return; 
-      
-      // rethrow; // Don't rethrow for demo purposes
+      return;
     }
   }
 }
@@ -179,6 +170,7 @@ class Photo {
   final String? thumbnailIV;
   final DateTime? capturedAt;
   final int encryptedSize;
+  bool isFavorite;
 
   Photo({
     required this.photoId,
@@ -189,19 +181,20 @@ class Photo {
     this.thumbnailIV,
     this.capturedAt,
     this.encryptedSize = 0,
+    this.isFavorite = false,
   });
 
   factory Photo.fromJson(Map<String, dynamic> json) {
     return Photo(
       photoId: json['photoId'] ?? '',
       originalFilename: json['originalFilename'] ?? 'Unknown',
-      thumbnailUrl: json['thumbnailDownloadUrl'], // Backend returns signed URL here
-      downloadUrl: json['downloadUrl'],           // and here
+      thumbnailUrl: json['thumbnailDownloadUrl'],
+      downloadUrl: json['downloadUrl'],
       iv: json['iv'] ?? '',
       thumbnailIV: json['thumbnailIV'],
       capturedAt: json['capturedAt'] != null ? DateTime.parse(json['capturedAt']) : null,
       encryptedSize: json['encryptedSize'] ?? 0,
+      isFavorite: json['isFavorite'] == true,
     );
   }
-
 }

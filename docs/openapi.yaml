@@ -448,6 +448,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StandardResponse"
+    get:
+      summary: get album photos
+      tags: [Albums]
+      security:
+        - BearerAuth: []
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Photos retrieved
+          headers:
+            X-Correlation-Id:
+              $ref: "#/components/headers/X-Correlation-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/getAlbumPhotosResponse"
+    
 
   /photos/{photoId}:
     get:
@@ -1286,6 +1313,16 @@ components:
             $ref: "#/components/schemas/Asset"
         nextToken:
           type: string
+    getAlbumPhotosResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Asset"
+        nextToken:
+          type: string
 
     TrashListResponse:
       type: object
@@ -1373,6 +1410,14 @@ components:
           type: array
           items:
             type: string
+    # getAlbumPhotosHandler:
+    #   type: object
+    #   required: [items]
+    #   properties:
+    #     items:
+    #       type: array
+    #       items:
+    #         $ref: "#/components/schemas/Asset"
 
     RestoreItemsRequest:
       type: object

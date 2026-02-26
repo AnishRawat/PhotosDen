@@ -11,6 +11,7 @@ import '../../../../core/network/network_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/crypto_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
+import '../../../../core/services/upload_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,7 +24,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   List<Photo> _photos = [];
   bool _isLoading = true;
+  bool _showFavoritesOnly = false;
+  bool _isUploading = false;
+  int _uploadProgress = 0;
+  int _uploadTotal = 0;
+
   late PhotoService _photoService;
+  late UploadService _uploadService;
   late AuthService _authService;
 
   @override
@@ -33,47 +40,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _initializeServices() async {
-    // In a real app, use a Service Locator (GetIt) or Riverpod
     final cryptoService = CryptoService();
     final storageService = SecureStorageService();
-    // Use localhost for Android emulator or your machine's IP for physical device
-    // access via 10.0.2.2 on Android emulator -> localhost on host
-    // But for Web (Chrome), localhost refers to the browser's machine, which is correct if backend is running locally.
-    // However, if backend is on a different port (e.g., 3000), specify it.
-    // Assuming backend is at ApiConstants.baseUrl for now (or placeholder).
-    const apiBaseUrl = ApiConstants.baseUrl; 
-    
+    const apiBaseUrl = ApiConstants.baseUrl;
+
     _authService = AuthService(
       cryptoService: cryptoService,
       storageService: storageService,
       apiBaseUrl: apiBaseUrl,
     );
 
-    // Try to restore session
     final hasSession = await _authService.loadSession();
     if (!hasSession) {
-      // If no session, redirect to login
       if (mounted) GoRouter.of(context).go('/login');
       return;
     }
 
     final networkService = NetworkService(_authService);
-    
+
     _photoService = PhotoService(
       networkService,
       cryptoService,
       _authService,
       storageService,
     );
-    
+    _uploadService = UploadService(
+      networkService,
+      cryptoService,
+      _authService,
+      storageService,
+    );
+
     _loadPhotos();
   }
 
   void _logout() async {
-    // We need access to the authService instance. 
-    // Since we created it locally in _initializeServices, we should store it in state or use a provider.
-    // For this quick fix, we'll recreate the dependency chain or, better, make _authService a field.
-    // Refactoring to make _authService a field.
     await _authService.logout();
     if (mounted) GoRouter.of(context).go('/');
   }
@@ -81,42 +82,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadPhotos() async {
     setState(() => _isLoading = true);
     try {
-      final photos = await _photoService.getPhotos();
+      final photos = _showFavoritesOnly
+          ? await _photoService.getFavoritePhotos()
+          : await _photoService.getPhotos();
       setState(() => _photos = photos);
     } catch (e) {
       print('Failed to load photos: $e');
-      
-      // FALLBACK FOR DEMO: If backend fails, show mock data
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Backend unreachable. Showing demo data. Error: $e')),
+          SnackBar(content: Text('Could not load photos: $e')),
         );
-        
-        setState(() {
-          _photos = [
-            Photo(
-              photoId: '1',
-              originalFilename: 'mountain_trip.jpg',
-              iv: 'mock_iv',
-              capturedAt: DateTime.now().subtract(const Duration(days: 1)),
-              thumbnailUrl: 'https://picsum.photos/200/200', 
-            ),
-            Photo(
-              photoId: '2',
-              originalFilename: 'family_dinner.jpg',
-              iv: 'mock_iv',
-              capturedAt: DateTime.now().subtract(const Duration(days: 2)),
-              thumbnailUrl: 'https://picsum.photos/201/201',
-            ),
-            Photo(
-              photoId: '3',
-              originalFilename: 'coding_setup.jpg',
-              iv: 'mock_iv',
-              capturedAt: DateTime.now().subtract(const Duration(days: 0)),
-              thumbnailUrl: 'https://picsum.photos/202/202',
-            ),
-          ];
-        });
+        if (!_showFavoritesOnly) {
+          // Fallback demo data only for the normal view
+          setState(() {
+            _photos = [
+              Photo(
+                photoId: '1',
+                originalFilename: 'mountain_trip.jpg',
+                iv: 'mock_iv',
+                capturedAt: DateTime.now().subtract(const Duration(days: 1)),
+                thumbnailUrl: 'https://picsum.photos/200/200',
+              ),
+              Photo(
+                photoId: '2',
+                originalFilename: 'family_dinner.jpg',
+                iv: 'mock_iv',
+                capturedAt: DateTime.now().subtract(const Duration(days: 2)),
+                thumbnailUrl: 'https://picsum.photos/201/201',
+              ),
+              Photo(
+                photoId: '3',
+                originalFilename: 'coding_setup.jpg',
+                iv: 'mock_iv',
+                capturedAt: DateTime.now(),
+                thumbnailUrl: 'https://picsum.photos/202/202',
+              ),
+            ];
+          });
+        }
       }
     } finally {
       setState(() => _isLoading = false);
@@ -126,35 +129,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _uploadPhotos() async {
     final picker = ImagePicker();
     final List<XFile> images = await picker.pickMultiImage();
-    
-    if (images.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Encrypting and uploading...')),
+    if (images.isEmpty) return;
+
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0;
+      _uploadTotal = images.length;
+    });
+
+    try {
+      await _uploadService.uploadPhotos(
+        images,
+        source: UploadSource.library,
+        onProgress: (done, total) {
+          setState(() {
+            _uploadProgress = done;
+            _uploadTotal = total;
+          });
+        },
       );
-      
-      try {
-        await _photoService.uploadPhotos(images);
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Upload complete!')),
+          SnackBar(content: Text('${images.length} photo${images.length == 1 ? '' : 's'} uploaded!')),
         );
-        _loadPhotos(); // Refresh grid
-      } catch (e) {
-        print('Upload error (using demo fallback): $e');
+        _loadPhotos();
       }
-      
-      // Refresh grid with new "uploaded" photo for demo
-      // In a real app, this would be handled by re-fetching or state management
-      setState(() {
-         final newPhoto = Photo(
-            photoId: DateTime.now().millisecondsSinceEpoch.toString(),
-            originalFilename: images.first.name,
-            iv: 'mock_iv',
-            capturedAt: DateTime.now(),
-            thumbnailUrl: 'https://picsum.photos/203/203?random=${DateTime.now().millisecondsSinceEpoch}', // Random new photo
-         );
-         _photos = [newPhoto, ..._photos];
-      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: $e'),
+            backgroundColor: Colors.red.shade400,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  Future<void> _toggleFavorite(Photo photo) async {
+    try {
+      final newValue = await _photoService.toggleFavorite(photo.photoId);
+      setState(() {
+        photo.isFavorite = newValue;
+        // If in favorites-only mode and we un-favorited, remove from list
+        if (_showFavoritesOnly && !newValue) {
+          _photos.remove(photo);
+        }
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update favorite: $e')),
+      );
+    }
+  }
+
+  void _toggleFavoritesFilter() {
+    setState(() => _showFavoritesOnly = !_showFavoritesOnly);
+    _loadPhotos();
   }
 
   @override
@@ -179,73 +212,167 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         body: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _photos.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.photo_library_outlined, size: 64, color: AppColors.textSlate.withOpacity(0.5)),
-                          const SizedBox(height: 16),
-                          Text('No photos yet', style: AppTextStyles.headline),
-                          const SizedBox(height: 8),
-                          const Text('Upload your first encrypted photo'),
-                        ],
-                      ),
-                    )
-                  : GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 200,
-                        childAspectRatio: 1,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                      ),
-                      itemCount: _photos.length,
-                      itemBuilder: (context, index) {
-                        final photo = _photos[index];
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              // In a real app, we'd use a custom widget that downloads & decrypts the thumbnail.
-                              // For now, fetching the thumbnail URL (which is signed)
-                              if (photo.thumbnailUrl != null)
-                                Image.network(
-                                  photo.thumbnailUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (c, e, s) => const Icon(Icons.broken_image),
-                                )
-                              else
-                                const Icon(Icons.lock, color: AppColors.primaryBlue),
-                                
-                              Positioned(
-                                bottom: 0,
-                                left: 0,
-                                right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  color: Colors.black45,
-                                  child: Text(
-                                    photo.originalFilename,
-                                    style: const TextStyle(color: Colors.white, fontSize: 10),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Toolbar ──────────────────────────────────────────────
+              Row(
+                children: [
+                  Text('Photos', style: AppTextStyles.headline),
+                  const SizedBox(width: 16),
+                  // Favorites filter chip
+                  FilterChip(
+                    avatar: Icon(
+                      _showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
+                      size: 16,
+                      color: _showFavoritesOnly ? Colors.white : AppColors.primaryBlue,
                     ),
+                    label: Text(
+                      'Favorites',
+                      style: TextStyle(
+                        color: _showFavoritesOnly ? Colors.white : AppColors.primaryBlue,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    selected: _showFavoritesOnly,
+                    onSelected: (_) => _toggleFavoritesFilter(),
+                    selectedColor: AppColors.primaryBlue,
+                    backgroundColor: AppColors.primaryBlue.withOpacity(0.08),
+                    checkmarkColor: Colors.white,
+                    side: BorderSide(color: AppColors.primaryBlue.withOpacity(0.3)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // ── Photo Grid ───────────────────────────────────────────
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _photos.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _showFavoritesOnly
+                                      ? Icons.favorite_border
+                                      : Icons.photo_library_outlined,
+                                  size: 64,
+                                  color: AppColors.textSlate.withOpacity(0.5),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _showFavoritesOnly
+                                      ? 'No favorites yet'
+                                      : 'No photos yet',
+                                  style: AppTextStyles.headline,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _showFavoritesOnly
+                                      ? 'Tap ♥ on any photo to save it here'
+                                      : 'Upload your first encrypted photo',
+                                ),
+                              ],
+                            ),
+                          )
+                        : GridView.builder(
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 140,
+                              childAspectRatio: 1,
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                            ),
+                            itemCount: _photos.length,
+                            itemBuilder: (context, index) {
+                              final photo = _photos[index];
+                              return _PhotoTile(
+                                photo: photo,
+                                onFavoriteToggle: () => _toggleFavorite(photo),
+                              );
+                            },
+                          ),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Photo tile widget with heart overlay
+// ─────────────────────────────────────────────────────────────────────────────
+class _PhotoTile extends StatelessWidget {
+  final Photo photo;
+  final VoidCallback onFavoriteToggle;
+
+  const _PhotoTile({required this.photo, required this.onFavoriteToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Thumbnail
+          if (photo.thumbnailUrl != null)
+            Image.network(
+              photo.thumbnailUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (c, e, s) => const Icon(Icons.broken_image),
+            )
+          else
+            const Icon(Icons.lock, color: AppColors.primaryBlue),
+
+          // Filename bar
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              color: Colors.black45,
+              child: Text(
+                photo.originalFilename,
+                style: const TextStyle(color: Colors.white, fontSize: 10),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+
+          // Heart button (top-right)
+          Positioned(
+            top: 6,
+            right: 6,
+            child: GestureDetector(
+              onTap: onFavoriteToggle,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.35),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  photo.isFavorite ? Icons.favorite : Icons.favorite_border,
+                  size: 18,
+                  color: photo.isFavorite ? Colors.red.shade400 : Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

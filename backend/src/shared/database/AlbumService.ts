@@ -234,4 +234,25 @@ export class AlbumService {
         });
         await this.client.send(updateCommand);
     }
+
+    /**
+     * List all photos in an album (returns album-photo join records)
+     */
+    async getAlbumPhotos(userId: string, albumId: string): Promise<{ photoId: string; s3Key: string; addedAt: string; thumbnailS3Key?: string }[]> {
+        const command = new QueryCommand({
+            TableName: this.tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues: {
+                ":pk": `USER#${userId}`,
+                ":sk": `ALBUM#${albumId}#PHOTO#`,
+            },
+        });
+        const result = await this.client.send(command);
+        return (result.Items ?? []).map((item) => ({
+            photoId: item.photoId,
+            s3Key: item.s3Key,
+            addedAt: item.addedAt,
+            thumbnailS3Key: item.thumbnailS3Key,
+        }));
+    }
 }

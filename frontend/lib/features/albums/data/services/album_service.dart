@@ -70,6 +70,18 @@ class AlbumService {
       throw Exception('Failed to delete album');
     }
   }
+
+  /// Fetch all photos in an album
+  Future<List<AlbumPhoto>> getAlbumPhotos(String albumId) async {
+    try {
+      final response = await _networkService.dio.get('/albums/$albumId/photos');
+      final items = response.data['items'] as List? ?? [];
+      return items.map((e) => AlbumPhoto.fromJson(e)).toList();
+    } catch (e) {
+      print('Error fetching album photos: $e');
+      throw Exception('Failed to load album photos');
+    }
+  }
 }
 
 /// Thrown when a user tries to create an album with a name that already exists.

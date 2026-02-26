@@ -393,3 +393,84 @@ export async function updateAlbumPhotosHandler(event: APIGatewayProxyEventV2): P
         };
     }
 }
+
+/**
+ * GET /albums/:albumId/photos
+ * Returns all photos in an album with presigned thumbnail URLs.
+ */
+export async function getAlbumPhotosHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+    console.log("getAlbumPhotosHandler");
+    const correlationId = correlationIdFrom(event);
+
+    const authResult = await verifyToken(event);
+    if (!authResult.authorized) {
+        return {
+            statusCode: 401,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ error: "Unauthorized", message: authResult.error, correlationId }),
+        };
+    }
+
+    try {
+        const albumId = event.pathParameters?.albumId;
+        if (!albumId) {
+            return {
+                statusCode: 400,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({ error: "BadRequest", message: "albumId is required", correlationId }),
+            };
+        }
+
+        // Verify album ownership
+        const album = await albumService.getAlbum(authResult.userId!, albumId);
+        if (!album || album.isDeleted) {
+            return {
+                statusCode: 404,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({ error: "NotFound", message: "Album not found", correlationId }),
+            };
+        }
+
+        // Fetch album-photo join records
+        const albumPhotos = await albumService.getAlbumPhotos(authResult.userId!, albumId);
+
+        // Enrich with presigned thumbnail URLs and photo metadata from PHOTO# records
+        const enriched = await Promise.all(
+            albumPhotos.map(async (ap) => {
+                let thumbnailDownloadUrl: string | undefined;
+
+                // Prefer thumbnailS3Key stored on the join record, fall back to s3Key
+                const thumbKey = ap.thumbnailS3Key ?? (ap.s3Key ? `${ap.s3Key}_thumb` : undefined);
+                if (thumbKey) {
+                    try {
+                        thumbnailDownloadUrl = await getSignedUrl(
+                            s3Client,
+                            new GetObjectCommand({ Bucket: bucketName, Key: thumbKey }),
+                            { expiresIn: 3600 }
+                        );
+                    } catch { /* ignore — no thumbnail */ }
+                }
+
+                return {
+                    photoId: ap.photoId,
+                    thumbnailDownloadUrl,
+                    originalFilename: (ap as any).originalFilename ?? '',
+                    addedAt: ap.addedAt,
+                };
+            })
+        );
+
+        return {
+            statusCode: 200,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ items: enriched, correlationId }),
+        };
+    } catch (err: any) {
+        console.error("Error fetching album photos:", err);
+        return {
+            statusCode: 500,
+            headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+            body: JSON.stringify({ error: err.name, message: err.message, correlationId }),
+        };
+    }
+}

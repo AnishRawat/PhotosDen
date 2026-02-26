@@ -198,7 +198,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                 backgroundColor: AppColors.primaryBlue,
               ),
         body: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -243,7 +243,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                           )
                         : GridView.builder(
                             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 250,
+                              maxCrossAxisExtent: 160,
                               childAspectRatio: 0.8,
                               crossAxisSpacing: 24,
                               mainAxisSpacing: 24,

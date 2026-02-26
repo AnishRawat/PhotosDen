@@ -3,8 +3,8 @@ import { Router } from "./shared/router/Router.js";
 import { signupHandler, loginHandler, confirmHandler, resendCodeHandler, forgotPasswordHandler, resetPasswordHandler } from "./interfaces/handlers/auth-handlers.js";
 import { getProfileHandler, updateProfileHandler } from "./interfaces/handlers/profile-handlers.js";
 import { initiateUploadHandler, listUploadsHandler, getUploadPhotosHandler, completeUploadHandler } from "./interfaces/handlers/upload-handlers.js";
-import { createAlbumHandler, listAlbumsHandler, getAlbumHandler, deleteAlbumHandler, updateAlbumPhotosHandler } from "./interfaces/handlers/album-handlers.js";
-import { getPhotoDownloadUrlHandler, deletePhotoHandler } from "./interfaces/handlers/photo-handlers.js";
+import { createAlbumHandler, listAlbumsHandler, getAlbumHandler, deleteAlbumHandler, updateAlbumPhotosHandler, getAlbumPhotosHandler } from "./interfaces/handlers/album-handlers.js";
+import { getPhotoDownloadUrlHandler, deletePhotoHandler, toggleFavoriteHandler, listFavoritesHandler } from "./interfaces/handlers/photo-handlers.js";
 import { listTrashHandler, restoreItemsHandler, permanentPurgeHandler } from "./interfaces/handlers/trash-handlers.js";
 import { createShareHandler, listActiveSharesHandler, updateShareStatusHandler, archiveShareHandler, getShareVisitsHandler, publicShareAccessHandler } from "./interfaces/handlers/share-handlers.js";
 import { generateSwaggerTestHandler } from "./interfaces/handlers/devtools-handlers.js";
@@ -59,10 +59,14 @@ router.on("GET", "/albums", listAlbumsHandler);
 router.on("GET", "/albums/:albumId", getAlbumHandler);
 router.on("DELETE", "/albums/:albumId", deleteAlbumHandler);
 router.on("PUT", "/albums/:albumId/photos", updateAlbumPhotosHandler);
+router.on("GET", "/albums/:albumId/photos", getAlbumPhotosHandler);
 
 // Photo Routes
+// NOTE: Static paths must be registered before dynamic :photoId to avoid capture conflicts.
+router.on("GET", "/photos/favorites", listFavoritesHandler);
 router.on("GET", "/photos/:photoId", (event) => getPhotoDownloadUrlHandler(event, billingGuard));
 router.on("DELETE", "/photos/:photoId", deletePhotoHandler);
+router.on("PUT", "/photos/:photoId/favorite", toggleFavoriteHandler);
 
 // Trash Routes
 router.on("GET", "/trash", listTrashHandler);

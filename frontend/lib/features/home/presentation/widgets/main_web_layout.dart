@@ -76,23 +76,29 @@ class _MainWebLayoutState extends State<MainWebLayout> {
               ],
             ),
       actions: [
-        // Search Bar (Simplified)
-        Container(
-          width: 200,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(8),
+        // Search Bar (Only on Desktop to save space on Mobile)
+        if (isDesktop)
+          Container(
+            width: 200,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                const Icon(Icons.search, size: 20, color: AppColors.textSlate),
+                const SizedBox(width: 8),
+                Text('Search...', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSlate)),
+              ],
+            ),
+          )
+        else
+          IconButton(
+            icon: const Icon(Icons.search, color: AppColors.textSlate),
+            onPressed: () {},
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              const Icon(Icons.search, size: 20, color: AppColors.textSlate),
-              const SizedBox(width: 8),
-              Text('Search...', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSlate)),
-            ],
-          ),
-        ),
         const SizedBox(width: 16),
         IconButton(
           icon: const Icon(Icons.notifications_none_rounded),

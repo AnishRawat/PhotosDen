@@ -5,6 +5,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ulid } from "ulid";
 import { UploadService } from "../../shared/database/UploadService.js";
+import { AlbumService } from "../../shared/database/AlbumService.js";
 import { DEFAULT_CORS_HEADERS } from "../../shared/http/cors.js";
 import { verifyToken } from "../../shared/auth/jwt-verifier.js";
 import { DynamoDBWalletRepository } from "../../infrastructure/database/repositories/DynamoDBWalletRepository.js";
@@ -24,6 +25,7 @@ const s3Client = new S3Client({});
 const tableName = process.env.DYNAMODB_TABLE_NAME || "photosden-store-dev";
 const bucketName = process.env.S3_BUCKET_NAME || "photosden-uploads-dev";
 const uploadService = new UploadService(docClient, tableName);
+const albumService = new AlbumService(docClient, tableName);
 
 export async function initiateUploadHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
     const correlationId = correlationIdFrom(event);
@@ -75,7 +77,39 @@ export async function initiateUploadHandler(event: APIGatewayProxyEventV2): Prom
         }
 
         const body = JSON.parse(event.body ?? "{}");
-        const { photos } = body;
+        const { photos, source, albumId } = body;
+        
+        // Validate source flag: "library" (direct) or "album"
+        const uploadSource: "library" | "album" = source === "album" ? "album" : "library";
+        
+        // If album upload, albumId is required
+        if (uploadSource === "album" && !albumId) {
+            return {
+                statusCode: 400,
+                headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                body: JSON.stringify({
+                    error: "BadRequest",
+                    message: "albumId is required when source is 'album'",
+                    correlationId,
+                }),
+            };
+        }
+        
+        // If album upload, verify the album belongs to this user
+        if (uploadSource === "album" && albumId) {
+            const album = await albumService.getAlbum(authResult.userId!, albumId);
+            if (!album || album.isDeleted) {
+                return {
+                    statusCode: 404,
+                    headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
+                    body: JSON.stringify({
+                        error: "NotFound",
+                        message: "Album not found",
+                        correlationId,
+                    }),
+                };
+            }
+        }
         
         // Expect array of photo metadata with encryption IVs
         if (!photos || !Array.isArray(photos) || photos.length === 0) {
@@ -108,8 +142,10 @@ export async function initiateUploadHandler(event: APIGatewayProxyEventV2): Prom
         // Generate upload ID
         const uploadId = ulid();
         
-        // Create upload record
-        const upload = await uploadService.createUpload(authResult.userId!, uploadId, photos.length);
+        // Create upload record (includes source and optional albumId)
+        const upload = await uploadService.createUpload(
+            authResult.userId!, uploadId, photos.length, uploadSource, albumId
+        );
 
         // Generate presigned URLs for each photo with ULID keys
         const presignedUrls = [];
@@ -177,6 +213,8 @@ export async function initiateUploadHandler(event: APIGatewayProxyEventV2): Prom
             headers: { ...DEFAULT_HEADERS, "X-Correlation-Id": correlationId },
             body: JSON.stringify({
                 uploadId,
+                source: uploadSource,
+                albumId: albumId ?? null,
                 photos: presignedUrls,
             }),
         };
@@ -338,6 +376,29 @@ export async function completeUploadHandler(event: APIGatewayProxyEventV2): Prom
 
         // Mark upload as completed
         await uploadService.completeUpload(authResult.userId!, uploadId);
+
+        // --- ALBUM LINKING: If this was an album upload, add photos to album ---
+        let albumLinkResult: { linked: number; albumId?: string } = { linked: 0 };
+        if (upload.albumId && upload.source === "album") {
+            try {
+                // Fetch all photos in this upload batch
+                const uploadPhotos = await uploadService.getUploadPhotos(authResult.userId!, uploadId);
+                
+                // Map to the format AlbumService.addPhotosToAlbum expects
+                const photoRefs = uploadPhotos.map((p) => ({
+                    photoId: p.photoId,
+                    s3Key: p.s3Key,
+                }));
+
+                if (photoRefs.length > 0) {
+                    await albumService.addPhotosToAlbum(authResult.userId!, upload.albumId, photoRefs);
+                    albumLinkResult = { linked: photoRefs.length, albumId: upload.albumId };
+                }
+            } catch (albumErr: any) {
+                // Non-fatal: upload is already marked complete, just log
+                console.error("[UPLOAD] Failed to link photos to album:", albumErr.message);
+            }
+        }
 
         return {
             statusCode: 200,
