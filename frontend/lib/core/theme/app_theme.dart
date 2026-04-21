@@ -34,4 +34,23 @@ class AppTheme {
       ),
     );
   }
+
+  static ThemeData get darkTheme {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: const Color(0xFF121212),
+      primaryColor: AppColors.primaryBlue,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primaryBlue,
+        brightness: Brightness.dark,
+      ),
+      elevatedButtonTheme: lightTheme.elevatedButtonTheme,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: false,
+      ),
+    );
+  }
 }

@@ -28,7 +28,7 @@ class NetworkService {
       onError: (DioException e, handler) {
         // Handle global errors (e.g., 401 Unauthorized -> Logout)
         if (e.response?.statusCode == 401) {
-          // TODO: Trigger logout or refresh token
+          _authService.logout();
         }
         return handler.next(e);
       },

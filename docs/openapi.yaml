@@ -591,6 +591,46 @@ paths:
           description: Server error
 
   /wallet/deposits:
+    get:
+      summary: Get deposit history
+      description: Get history of wallet deposits
+      tags: [Billing]
+      security:
+        - BearerAuth: []
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri: ${lambda_invoke_arn}
+        payloadFormatVersion: "2.0"
+      responses:
+        "200":
+          description: Deposit history retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        depositId:
+                          type: string
+                        amount:
+                          type: number
+                        status:
+                          type: string
+                        createdAt:
+                          type: number
+                        notes:
+                          type: string
+        "401":
+          description: Unauthorized
+        "500":
+          description: Server error
     post:
       summary: Create deposit
       description: Add funds to wallet

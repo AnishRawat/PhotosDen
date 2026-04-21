@@ -169,8 +169,11 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
 
   void _onDestinationSelected(int index) {
     if (index == 0) context.go('/dashboard');
-    if (index == 1) context.go('/albums');
-    setState(() => _selectedIndex = index);
+    else if (index == 1) context.go('/albums');
+    else if (index == 4) context.go('/wallet');
+    else if (index == 5) context.go('/settings');
+    else if (index == 6) context.go('/profile');
+    else setState(() => _selectedIndex = index);
   }
 
   @override

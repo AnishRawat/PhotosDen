@@ -8,7 +8,7 @@ import { getPhotoDownloadUrlHandler, deletePhotoHandler, toggleFavoriteHandler, 
 import { listTrashHandler, restoreItemsHandler, permanentPurgeHandler } from "./interfaces/handlers/trash-handlers.js";
 import { createShareHandler, listActiveSharesHandler, updateShareStatusHandler, archiveShareHandler, getShareVisitsHandler, publicShareAccessHandler } from "./interfaces/handlers/share-handlers.js";
 import { generateSwaggerTestHandler } from "./interfaces/handlers/devtools-handlers.js";
-import { getWalletHandler, createDepositHandler } from "./interfaces/handlers/billing-handlers.js";
+import { getWalletHandler, createDepositHandler, getDepositsHandler } from "./interfaces/handlers/billing-handlers.js";
 import { getLookupsHandler, refreshLookupsHandler } from "./interfaces/handlers/lookups-handlers.js";
 import { getBillingStatusHandler } from "./interfaces/handlers/billing-status-handlers.js";
 import { syncAwsPricesHandler, manualPriceSyncHandler } from "./interfaces/handlers/pricing-handlers.js";
@@ -83,6 +83,7 @@ router.on("GET", "/share/:token", (event) => publicShareAccessHandler(event, bil
 
 // Billing & Wallet Routes
 router.on("GET", "/wallet", getWalletHandler);
+router.on("GET", "/wallet/deposits", getDepositsHandler);
 router.on("POST", "/wallet/deposits", createDepositHandler);
 router.on("GET", "/billing/status", (event) => getBillingStatusHandler(event, getBillingStatusUseCase));
 

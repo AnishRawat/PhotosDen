@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../wallet/providers/wallet_provider.dart';
+import 'package:intl/intl.dart';
 
-class SideNavigation extends StatelessWidget {
+class SideNavigation extends ConsumerWidget {
   final int selectedIndex;
   final Function(int) onDestinationSelected;
   final VoidCallback onLogout;
@@ -15,7 +18,9 @@ class SideNavigation extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final walletState = ref.watch(walletProvider);
+
     return Container(
       width: 250,
       color: AppColors.surface,
@@ -72,18 +77,14 @@ class SideNavigation extends StatelessWidget {
                         isSelected: selectedIndex == 3,
                         onTap: () => onDestinationSelected(3),
                       ),
+                      _NavItem(
+                        icon: Icons.settings_outlined,
+                        selectedIcon: Icons.settings,
+                        label: 'Settings',
+                        isSelected: selectedIndex == 5,
+                        onTap: () => onDestinationSelected(5),
+                      ),
                     ],
-                  ),
-                ),
-                // Logout at the bottom of the navigation area
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: _NavItem(
-                    icon: Icons.logout_rounded,
-                    selectedIcon: Icons.logout_rounded,
-                    label: 'Sign Out',
-                    isSelected: false,
-                    onTap: onLogout,
                   ),
                 ),
               ],
@@ -91,30 +92,66 @@ class SideNavigation extends StatelessWidget {
           ),
           
           // User Profile (Bottom)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.grey.shade200)),
-            ),
-            child: Row(
-              children: [
-                const CircleAvatar(
-                  backgroundColor: AppColors.primaryBlue,
-                  radius: 16,
-                  child: Text('A', style: TextStyle(color: Colors.white, fontSize: 14)),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => onDestinationSelected(6), // 6 = Profile
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Anish Rawat', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
-                      Text('Pro Plan', style: AppTextStyles.label.copyWith(color: AppColors.textSlate)),
-                    ],
-                  ),
+                child: Row(
+                  children: [
+                    const CircleAvatar(
+                      backgroundColor: AppColors.primaryBlue,
+                      radius: 16,
+                      child: Text('A', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Anish Rawat', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600, fontSize: 13)),
+                          const SizedBox(height: 2),
+                          // Wallet Balance
+                          GestureDetector(
+                            onTap: () => onDestinationSelected(4), // 4 = Wallet screen override
+                            child: walletState.when(
+                              data: (state) {
+                                if (state.balance != null) {
+                                  final formatCurrency = NumberFormat.currency(locale: 'en_IN', symbol: state.balance!.currencySymbol);
+                                  return Row(
+                                    children: [
+                                      const Icon(Icons.account_balance_wallet, size: 12, color: AppColors.primaryBlue),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        formatCurrency.format(state.balance!.balanceAvailable),
+                                        style: AppTextStyles.label.copyWith(color: AppColors.primaryBlue, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Text('Wallet Error', style: AppTextStyles.label.copyWith(color: Colors.redAccent));
+                              },
+                              loading: () => const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                              error: (_, __) => Text('Wallet Error', style: AppTextStyles.label.copyWith(color: Colors.redAccent)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.logout_rounded, size: 20, color: Colors.redAccent),
+                      onPressed: onLogout,
+                      tooltip: 'Sign Out',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
                 ),
-                const Icon(Icons.settings_outlined, size: 20, color: AppColors.textSlate),
-              ],
+              ),
             ),
           ),
         ],

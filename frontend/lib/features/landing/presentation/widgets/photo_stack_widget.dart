@@ -15,19 +15,19 @@ class PhotoStackWidget extends StatelessWidget {
             rotation: -0.15,
             offset: const Offset(-40, 0),
             imageColor: Colors.deepOrange.shade100, // Placeholder color
-            imageUrl: 'https://images.unsplash.com/photo-1542038784456-1ea999e56e33?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+            imageUrl: 'https://picsum.photos/400/600?random=1',
           ),
           _buildPhotoCard(
             rotation: 0.12,
             offset: const Offset(40, 20),
             imageColor: Colors.teal.shade100, // Placeholder color
-             imageUrl: 'https://images.unsplash.com/photo-1551043047-12618e878bc0?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+             imageUrl: 'https://picsum.photos/400/600?random=2',
           ),
           _buildPhotoCard(
             rotation: 0.0,
             offset: const Offset(0, -20),
             imageColor: Colors.blue.shade100, // Placeholder color
-             imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+             imageUrl: 'https://picsum.photos/400/600?random=3',
           ),
         ],
       ),

@@ -9,10 +9,10 @@ import '../services/secure_storage_service.dart';
 /// Integrates CryptoService with backend authentication endpoints.
 /// Handles client-side key derivation and DEK management.
 ///
-/// Flow:
-/// - Signup: Generate DEK, derive Master Key, encrypt DEK, send to backend
-/// - Login: Retrieve encrypted DEK, derive Master Key, decrypt DEK, store locally
-/// - Logout: Clear DEK from local storage
+// / Flow:
+// / - Signup: Generate DEK, derive Master Key, encrypt DEK, send to backend
+// / - Login: Retrieve encrypted DEK, derive Master Key, decrypt DEK, store locally
+// / - Logout: Clear DEK from local storage
 class AuthService {
   final CryptoService _cryptoService;
   final SecureStorageService _storageService;

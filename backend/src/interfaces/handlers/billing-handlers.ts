@@ -14,6 +14,7 @@ import { DynamoDBDepositRepository } from '../../infrastructure/database/reposit
 import { CreateWalletUseCase } from '../../application/billing/use-cases/CreateWalletUseCase';
 import { GetWalletBalanceUseCase } from '../../application/billing/use-cases/GetWalletBalanceUseCase';
 import { CreateDepositUseCase } from '../../application/billing/use-cases/CreateDepositUseCase';
+import { GetDepositsUseCase } from '../../application/billing/use-cases/GetDepositsUseCase';
 
 // Events
 import { InMemoryEventPublisher } from '../../infrastructure/events/InMemoryEventPublisher';
@@ -29,6 +30,7 @@ const eventPublisher = new InMemoryEventPublisher();
 const createWalletUseCase = new CreateWalletUseCase(walletRepo);
 const getWalletBalanceUseCase = new GetWalletBalanceUseCase(walletRepo);
 const createDepositUseCase = new CreateDepositUseCase(walletRepo, depositRepo, eventPublisher);
+const getDepositsUseCase = new GetDepositsUseCase(depositRepo);
 
 // Cognito JWT Verifier
 const verifier = CognitoJwtVerifier.create({
@@ -137,6 +139,50 @@ export async function getWalletHandler(event: APIGatewayProxyEventV2): Promise<A
         };
       }
     }
+    
+    return {
+      statusCode: error.message.includes('token') ? 401 : 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+      body: JSON.stringify({
+        success: false,
+        error: error.message,
+      }),
+    };
+  }
+}
+
+/**
+ * GET /wallet/deposits
+ * Get deposit history
+ */
+export async function getDepositsHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+  try {
+    const userId = await getUserIdFromToken(event);
+    
+    const deposits = await getDepositsUseCase.execute(userId);
+    
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+      body: JSON.stringify({
+        success: true,
+        data: deposits.map(d => ({
+          depositId: d.id,
+          amount: d.amount.amountInSmallestUnit / 100,
+          status: d.status,
+          createdAt: d.toJSON().createdAt,
+          notes: d.toJSON().notes,
+        })),
+      }),
+    };
+  } catch (error: any) {
+    console.error('[GET_DEPOSITS_ERROR]:', error);
     
     return {
       statusCode: error.message.includes('token') ? 401 : 500,
