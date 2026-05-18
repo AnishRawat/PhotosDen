@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -12,16 +13,18 @@ import '../../../../core/services/upload_service.dart';
 import '../../../../core/utils/toast_utils.dart';
 import '../../data/models/album.dart';
 import '../../data/services/album_service.dart';
+import '../../../wallet/providers/wallet_provider.dart';
+import '../../../../core/constants/app_strings.dart';
 
-class AlbumDetailScreen extends StatefulWidget {
+class AlbumDetailScreen extends ConsumerStatefulWidget {
   final String albumId;
   const AlbumDetailScreen({super.key, required this.albumId});
 
   @override
-  State<AlbumDetailScreen> createState() => _AlbumDetailScreenState();
+  ConsumerState<AlbumDetailScreen> createState() => _AlbumDetailScreenState();
 }
 
-class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
+class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   late AuthService _authService;
   late AlbumService _albumService;
   late UploadService _uploadService;
@@ -73,6 +76,34 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 
   Future<void> _addPhotos() async {
+    try {
+      final walletState = await ref.read(walletProvider.future);
+      if (walletState.balance != null && walletState.balance!.balanceAvailable <= 0) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text(AppStrings.walletEmptyWarningTitle),
+            content: const Text(AppStrings.walletEmptyWarningBody),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text(AppStrings.cancel),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, foregroundColor: Colors.white),
+                child: const Text(AppStrings.proceed),
+              ),
+            ],
+          ),
+        );
+
+        if (proceed != true) return;
+      }
+    } catch (e) {
+      print('Wallet check failed: $e');
+    }
+
     final picker = ImagePicker();
     final images = await picker.pickMultiImage();
     if (images.isEmpty) return;
@@ -96,11 +127,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         },
       );
       if (mounted) {
-        ToastUtils.showSuccess(context, '${images.length} photo${images.length == 1 ? '' : 's'} added!');
+        ToastUtils.showSuccess(context, AppStrings.uploadSuccess(images.length));
         _loadAlbumDetails(); // refresh
       }
     } catch (e) {
-      if (mounted) ToastUtils.showError(context, 'Upload failed: $e');
+      if (mounted) ToastUtils.showError(context, '${AppStrings.uploadFailed}$e');
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
@@ -109,27 +140,27 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_album == null) {
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(child: Text('Album not found')),
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: const Center(child: Text('Album not found')),
       );
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(_album!.name, style: AppTextStyles.headline.copyWith(fontSize: 20)),
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).iconTheme.color),
           onPressed: () => context.go('/albums'),
         ),
         actions: [
@@ -148,7 +179,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text('$_uploadProgress / $_uploadTotal',
-                      style: const TextStyle(fontSize: 13, color: AppColors.textDark)),
+                      style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodySmall?.color)),
                 ],
               ),
             )
@@ -157,6 +188,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
               onPressed: _addPhotos,
               icon: const Icon(Icons.add_photo_alternate_outlined),
               label: const Text('Add Photos'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.primaryBlue),
             ),
           const SizedBox(width: 8),
         ],
@@ -181,6 +213,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     label: const Text('Add Photos'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryBlue,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                       textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
@@ -200,7 +233,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 final photo = _photos[index];
                 return Container(
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
+                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   clipBehavior: Clip.antiAlias,

@@ -20,8 +20,8 @@ class LandingContentMobile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Header
-              const FadeInSlide(
-                duration: Duration(milliseconds: 600),
+              FadeInSlide(
+                duration: const Duration(milliseconds: 600),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -33,11 +33,11 @@ class LandingContentMobile extends StatelessWidget {
                           fontFamily: 'Outfit',
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textDark,
+                          color: Theme.of(context).textTheme.titleLarge?.color,
                         )),
                       ],
                     ),
-                    Icon(Icons.menu_rounded, color: AppColors.textDark),
+                    Icon(Icons.menu_rounded, color: Theme.of(context).iconTheme.color),
                   ],
                 ),
               ),
@@ -50,7 +50,7 @@ class LandingContentMobile extends StatelessWidget {
                 child: Text(
                   'Your Memories,\nBeautifully Shared',
                   textAlign: TextAlign.center,
-                  style: AppTextStyles.display,
+                  style: AppTextStyles.display.copyWith(color: Theme.of(context).textTheme.displayLarge?.color),
                 ),
               ),
               const SizedBox(height: 16),

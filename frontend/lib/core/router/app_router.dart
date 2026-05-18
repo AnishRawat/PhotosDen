@@ -11,16 +11,39 @@ import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/screens/pricing_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/wallet/presentation/screens/wallet_screen.dart';
+import '../../features/home/presentation/screens/cloud_library_screen.dart';
 import '../../core/services/crypto_service.dart';
 import '../../core/services/secure_storage_service.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/services/auth_service.dart';
+
+final _routerAuthService = AuthService(
+  cryptoService: CryptoService(),
+  storageService: SecureStorageService(),
+  apiBaseUrl: ApiConstants.baseUrl,
+);
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
   initialLocation: '/',
+  redirect: (context, state) async {
+    final path = state.uri.path;
+    final isPublicRoute = path == '/' || 
+                          path == '/login' || 
+                          path == '/signup' || 
+                          path.startsWith('/verify-otp') || 
+                          path == '/pricing';
+
+    if (!isPublicRoute) {
+      final isLoggedIn = await _routerAuthService.loadSession();
+      if (!isLoggedIn) {
+        return '/signup';
+      }
+    }
+    return null;
+  },
   routes: [
     GoRoute(
       path: '/',
@@ -48,29 +71,39 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (context, state) => const SettingsScreen(),
-      routes: [
-        GoRoute(
-          path: 'pricing',
-          builder: (context, state) => const PricingScreen(),
-        ),
-      ],
+    ),
+    GoRoute(
+      path: '/pricing',
+      builder: (context, state) => const PricingScreen(),
     ),
     GoRoute(
       path: '/wallet',
       builder: (context, state) => const WalletScreen(),
     ),
     GoRoute(
+      path: '/library',
+      builder: (context, state) => CloudLibraryScreen(
+        selectedIndex: 7,
+        onDestinationSelected: (index) {
+          if (index == 0) GoRouter.of(context).go('/dashboard');
+          else if (index == 1) GoRouter.of(context).go('/albums');
+          else if (index == 4) GoRouter.of(context).go('/wallet');
+          else if (index == 5) GoRouter.of(context).go('/settings');
+          else if (index == 6) GoRouter.of(context).go('/profile');
+        },
+        onLogout: () async {
+          await _routerAuthService.logout();
+          if (context.mounted) context.go('/signup');
+        },
+      ),
+    ),
+    GoRoute(
       path: '/profile',
       builder: (context, state) {
         return ProfileScreen(
           onLogout: () async {
-            final authService = AuthService(
-              cryptoService: CryptoService(),
-              storageService: SecureStorageService(),
-              apiBaseUrl: ApiConstants.baseUrl,
-            );
-            await authService.logout();
-            if (context.mounted) context.go('/');
+            await _routerAuthService.logout();
+            if (context.mounted) context.go('/signup');
           },
         );
       },

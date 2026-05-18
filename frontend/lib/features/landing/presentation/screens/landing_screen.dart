@@ -10,8 +10,9 @@ class LandingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.meshGradient,
+        decoration: BoxDecoration(
+          gradient: Theme.of(context).brightness == Brightness.light ? AppColors.meshGradient : null,
+          color: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).scaffoldBackgroundColor : null,
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {

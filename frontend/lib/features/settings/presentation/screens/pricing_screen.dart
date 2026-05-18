@@ -29,11 +29,10 @@ class _PricingScreenState extends State<PricingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.textDark),
         title: Text('Pricing Estimations', style: AppTextStyles.headline.copyWith(fontSize: 20)),
       ),
       body: FutureBuilder<Map<String, dynamic>>(
@@ -88,7 +87,7 @@ class _PricingScreenState extends State<PricingScreen> {
             children: [
               Container(
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
@@ -142,7 +141,7 @@ class _PricingScreenState extends State<PricingScreen> {
                     Expanded(
                       child: Text(
                         getValue('billing.pricing.note', 'Note: These are estimated prices fetched live from the server. Final pricing may vary slightly based on AWS region costs and includes a small platform margin.'),
-                        style: AppTextStyles.label.copyWith(color: AppColors.textSlate, height: 1.4),
+                        style: AppTextStyles.label.copyWith(color: Theme.of(context).textTheme.bodySmall?.color, height: 1.4),
                       ),
                     ),
                   ],

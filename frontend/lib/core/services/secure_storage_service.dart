@@ -98,9 +98,14 @@ class SecureStorageService {
   // --- Session Management ---
 
   /// Store session data
-  Future<void> storeSession(String userId, String idToken) async {
+  Future<void> storeSession(String userId, String idToken, {int? expiryMilliseconds}) async {
     await _storage.write(key: 'session_userId', value: userId);
     await _storage.write(key: 'session_token', value: idToken);
+    if (expiryMilliseconds != null) {
+      await _storage.write(key: 'session_expiry', value: expiryMilliseconds.toString());
+    } else {
+      await _storage.delete(key: 'session_expiry');
+    }
   }
 
   /// Get stored session
@@ -108,8 +113,16 @@ class SecureStorageService {
   Future<Map<String, String>?> getSession() async {
     final userId = await _storage.read(key: 'session_userId');
     final token = await _storage.read(key: 'session_token');
+    final expiryStr = await _storage.read(key: 'session_expiry');
     
     if (userId != null && token != null) {
+      if (expiryStr != null) {
+        final expiry = int.tryParse(expiryStr);
+        if (expiry != null && DateTime.now().millisecondsSinceEpoch > expiry) {
+          await clearSession(); // Clean up expired session
+          return null;
+        }
+      }
       return {'userId': userId, 'idToken': token};
     }
     return null;
@@ -119,5 +132,6 @@ class SecureStorageService {
   Future<void> clearSession() async {
     await _storage.delete(key: 'session_userId');
     await _storage.delete(key: 'session_token');
+    await _storage.delete(key: 'session_expiry');
   }
 }

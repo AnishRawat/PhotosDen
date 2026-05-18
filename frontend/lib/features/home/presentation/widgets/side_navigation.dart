@@ -23,7 +23,7 @@ class SideNavigation extends ConsumerWidget {
 
     return Container(
       width: 250,
-      color: AppColors.surface,
+      color: Theme.of(context).colorScheme.surface,
       child: Column(
         children: [
           // Logo Area
@@ -33,7 +33,7 @@ class SideNavigation extends ConsumerWidget {
               children: [
                 const Icon(Icons.camera_rounded, color: AppColors.primaryBlue, size: 28),
                 const SizedBox(width: 8),
-                Text('PhotosDen', style: AppTextStyles.headline.copyWith(fontSize: 20)),
+                Text('PhotosDen', style: AppTextStyles.headline.copyWith(fontSize: 20, color: Theme.of(context).textTheme.titleLarge?.color)),
               ],
             ),
           ),
@@ -60,6 +60,13 @@ class SideNavigation extends ConsumerWidget {
                         label: 'Albums',
                         isSelected: selectedIndex == 1,
                         onTap: () => onDestinationSelected(1),
+                      ),
+                      _NavItem(
+                        icon: Icons.cloud_outlined,
+                        selectedIcon: Icons.cloud,
+                        label: 'Library',
+                        isSelected: selectedIndex == 7,
+                        onTap: () => onDestinationSelected(7),
                       ),
 
                       _NavItem(
@@ -99,7 +106,7 @@ class SideNavigation extends ConsumerWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                  border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
                 ),
                 child: Row(
                   children: [
@@ -113,7 +120,7 @@ class SideNavigation extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Anish Rawat', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600, fontSize: 13)),
+                          Text('Anish Rawat', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600, fontSize: 13, color: Theme.of(context).textTheme.bodyLarge?.color)),
                           const SizedBox(height: 2),
                           // Wallet Balance
                           GestureDetector(
@@ -192,13 +199,13 @@ class _NavItem extends StatelessWidget {
                 Icon(
                   isSelected ? selectedIcon : icon,
                   size: 20,
-                  color: isSelected ? AppColors.primaryBlue : AppColors.textSlate,
+                  color: isSelected ? AppColors.primaryBlue : Theme.of(context).iconTheme.color,
                 ),
                 const SizedBox(width: 12),
                 Text(
                   label,
                   style: AppTextStyles.bodyMedium.copyWith(
-                    color: isSelected ? AppColors.primaryBlue : AppColors.textDark,
+                    color: isSelected ? AppColors.primaryBlue : Theme.of(context).textTheme.bodyMedium?.color,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),

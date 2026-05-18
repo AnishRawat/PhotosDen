@@ -157,7 +157,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         Text(
                           'Join PhotosDen today',
                           textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSlate),
+                          style: AppTextStyles.bodyMedium.copyWith(color: Theme.of(context).textTheme.bodySmall?.color),
                         ),
                         const SizedBox(height: 32),
                         // Name Field

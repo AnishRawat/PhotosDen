@@ -9,6 +9,7 @@ import '../../../../core/constants/api_constants.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/providers/currency_provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../../home/presentation/widgets/main_web_layout.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -38,6 +39,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         else if (index == 4) context.go('/wallet');
         else if (index == 5) context.go('/settings');
         else if (index == 6) context.go('/profile');
+        else if (index == 7) context.go('/library');
       },
       onLogout: () async {
         final authService = AuthService(
@@ -46,10 +48,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           apiBaseUrl: ApiConstants.baseUrl,
         );
         await authService.logout();
-        if (context.mounted) context.go('/login');
+        if (context.mounted) context.go('/signup');
       },
       child: Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -73,7 +75,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
@@ -123,6 +125,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                 ),
+              if (dotenv.env['ENABLE_MULTI_CURRENCY'] == 'true') ...[
                 const SizedBox(height: 24),
                 Text('Currency', style: AppTextStyles.bodyMedium),
                 const SizedBox(height: 16),
@@ -136,7 +139,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     child: DropdownButton<String>(
                       value: _currency,
                       isExpanded: true,
-                      icon: const Icon(Icons.arrow_drop_down, color: AppColors.textSlate),
+                      icon: Icon(Icons.arrow_drop_down, color: Theme.of(context).textTheme.bodySmall?.color),
                       items: const [
                         DropdownMenuItem(value: 'INR', child: Text('₹ Indian Rupee (INR)')),
                         DropdownMenuItem(value: 'USD', child: Text('\$ US Dollar (USD)')),
@@ -151,14 +154,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
               ],
-            ),
+            ],
           ),
+        ),
           const SizedBox(height: 24),
           _buildSectionHeader('Billing & Services'),
           const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
@@ -174,7 +178,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   icon: Icons.currency_rupee,
                   title: 'Pricing & Estimates',
                   subtitle: 'View costs for uploads, downloads, and storage',
-                  onTap: () => context.push('/settings/pricing'),
+                  onTap: () => context.push('/pricing'),
                 ),
                 const Divider(height: 1, indent: 56),
                 _SettingsListTile(
@@ -191,7 +195,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
@@ -232,7 +236,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: Text(
         title.toUpperCase(),
         style: AppTextStyles.label.copyWith(
-          color: AppColors.textSlate,
+          color: Theme.of(context).textTheme.bodySmall?.color,
           letterSpacing: 1.2,
           fontWeight: FontWeight.w600,
         ),
@@ -268,9 +272,9 @@ class _SettingsListTile extends StatelessWidget {
       ),
       title: Text(title, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500)),
       subtitle: subtitle != null
-          ? Text(subtitle!, style: AppTextStyles.label.copyWith(color: AppColors.textSlate))
+          ? Text(subtitle!, style: AppTextStyles.label.copyWith(color: Theme.of(context).textTheme.bodySmall?.color))
           : null,
-      trailing: const Icon(Icons.chevron_right, color: AppColors.textSlate, size: 20),
+      trailing: Icon(Icons.chevron_right, color: Theme.of(context).textTheme.bodySmall?.color, size: 20),
       onTap: onTap,
     );
   }

@@ -5,7 +5,11 @@ import 'core/router/app_router.dart';
 import 'core/theme/theme_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-void main() {
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: "assets/.env");
   runApp(
     const ProviderScope(
       child: PhotosDenApp(),

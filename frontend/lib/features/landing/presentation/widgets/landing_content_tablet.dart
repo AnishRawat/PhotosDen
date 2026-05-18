@@ -4,6 +4,8 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/fade_in_slide.dart';
 import 'photo_stack_widget.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_provider.dart';
 import 'package:go_router/go_router.dart';
 
 class LandingContentTablet extends StatelessWidget {
@@ -17,8 +19,8 @@ class LandingContentTablet extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
           decoration: BoxDecoration(
-            color: AppColors.background.withValues(alpha: 0.8),
-            border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+            color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.8),
+            border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -27,16 +29,28 @@ class LandingContentTablet extends StatelessWidget {
                   children: [
                     Icon(Icons.camera_rounded, color: AppColors.primaryBlue, size: 28),
                     const SizedBox(width: 8),
-                    Text('PhotosDen', style: AppTextStyles.headline.copyWith(fontSize: 24)),
+                    Text('PhotosDen', style: AppTextStyles.headline.copyWith(fontSize: 24, color: Theme.of(context).textTheme.titleLarge?.color)),
                   ],
                 ),
               Row(
                 children: [
                   TextButton(onPressed: () {}, child: Text('Features', style: AppTextStyles.bodyMedium)),
                   const SizedBox(width: 24),
-                  TextButton(onPressed: () {}, child: Text('Gallery', style: AppTextStyles.bodyMedium)),
+                  TextButton(onPressed: () => context.push('/pricing'), child: Text('Pricing', style: AppTextStyles.bodyMedium)),
                   const SizedBox(width: 24),
-                  TextButton(onPressed: () {}, child: Text('Pricing', style: AppTextStyles.bodyMedium)),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final themeMode = ref.watch(themeProvider);
+                      final isDark = themeMode == ThemeMode.dark || (themeMode == ThemeMode.system && Theme.of(context).brightness == Brightness.dark);
+                      return Switch(
+                        value: isDark,
+                        onChanged: (value) {
+                          ref.read(themeProvider.notifier).setThemeMode(value ? ThemeMode.dark : ThemeMode.light);
+                        },
+                        activeColor: AppColors.primaryBlue,
+                      );
+                    },
+                  ),
                   const SizedBox(width: 32),
                   ElevatedButton(
                     onPressed: () => context.go('/login'),
@@ -68,7 +82,7 @@ class LandingContentTablet extends StatelessWidget {
                         duration: const Duration(milliseconds: 700),
                         child: Text(
                           'Your Memories,\nBeautifully Shared.',
-                          style: AppTextStyles.display,
+                          style: AppTextStyles.display.copyWith(color: Theme.of(context).textTheme.displayLarge?.color),
                         ),
                       ),
                       const SizedBox(height: 24),

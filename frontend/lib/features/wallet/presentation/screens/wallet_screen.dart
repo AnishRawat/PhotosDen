@@ -26,6 +26,7 @@ class WalletScreen extends ConsumerWidget {
         else if (index == 4) context.go('/wallet');
         else if (index == 5) context.go('/settings');
         else if (index == 6) context.go('/profile');
+        else if (index == 7) context.go('/library');
       },
       onLogout: () async {
         final authService = AuthService(
@@ -34,10 +35,10 @@ class WalletScreen extends ConsumerWidget {
           apiBaseUrl: ApiConstants.baseUrl,
         );
         await authService.logout();
-        if (context.mounted) context.go('/login');
+        if (context.mounted) context.go('/signup');
       },
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -49,7 +50,7 @@ class WalletScreen extends ConsumerWidget {
                 children: [
                   Text('Wallet', style: AppTextStyles.headline.copyWith(fontSize: 24)),
                   IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: AppColors.textDark),
+                    icon: Icon(Icons.refresh_rounded, color: Theme.of(context).iconTheme.color),
                     onPressed: () => ref.read(walletProvider.notifier).refresh(),
                     tooltip: 'Refresh',
                   ),
@@ -146,7 +147,7 @@ class WalletScreen extends ConsumerWidget {
             Expanded(
               flex: 7,
               child: Container(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.surface,
                 child: _DepositHistoryList(state: state),
               ),
             ),
@@ -299,7 +300,7 @@ class _BreakdownCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.withOpacity(0.1)),
         boxShadow: [
@@ -315,7 +316,7 @@ class _BreakdownCard extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 12),
-          Text(title, style: AppTextStyles.label.copyWith(color: AppColors.textSlate)),
+          Text(title, style: AppTextStyles.label.copyWith(color: Theme.of(context).textTheme.bodySmall?.color)),
           const SizedBox(height: 4),
           Text(amount, style: AppTextStyles.headline.copyWith(fontSize: 20)),
         ],
@@ -341,7 +342,7 @@ class _DepositHistoryList extends StatelessWidget {
             children: [
               Text('Deposit History', style: AppTextStyles.headline.copyWith(fontSize: 22)),
               if (state.deposits.isNotEmpty)
-                Text('${state.deposits.length} Records', style: AppTextStyles.label.copyWith(color: AppColors.textSlate)),
+                Text('${state.deposits.length} Records', style: AppTextStyles.label.copyWith(color: Theme.of(context).textTheme.bodySmall?.color)),
             ],
           ),
           const SizedBox(height: 24),
@@ -353,7 +354,7 @@ class _DepositHistoryList extends StatelessWidget {
                   children: [
                     Icon(Icons.history_rounded, size: 64, color: Colors.grey.withOpacity(0.3)),
                     const SizedBox(height: 16),
-                    Text('No previous deposits found', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSlate)),
+                    Text('No previous deposits found', style: AppTextStyles.bodyMedium.copyWith(color: Theme.of(context).textTheme.bodySmall?.color)),
                   ],
                 ),
               ),
@@ -437,9 +438,9 @@ class _AddFundsModalState extends State<_AddFundsModal> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
@@ -465,7 +466,7 @@ class _AddFundsModalState extends State<_AddFundsModal> {
             style: AppTextStyles.headline.copyWith(fontSize: 32),
             decoration: InputDecoration(
               prefixText: '₹ ',
-              prefixStyle: AppTextStyles.headline.copyWith(fontSize: 32, color: AppColors.textSlate),
+              prefixStyle: AppTextStyles.headline.copyWith(fontSize: 32, color: Theme.of(context).textTheme.bodySmall?.color),
               labelText: 'Enter Amount',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),

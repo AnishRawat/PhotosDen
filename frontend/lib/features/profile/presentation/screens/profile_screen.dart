@@ -28,10 +28,11 @@ class ProfileScreen extends ConsumerWidget {
         else if (index == 4) context.go('/wallet');
         else if (index == 5) context.go('/settings');
         else if (index == 6) context.go('/profile');
+        else if (index == 7) context.go('/library');
       },
       onLogout: onLogout,
       child: Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -68,7 +69,7 @@ class ProfileScreen extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: AppColors.primaryBlue,
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.surface, width: 3),
+                      border: Border.all(color: Theme.of(context).colorScheme.surface, width: 3),
                     ),
                     child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
                   ),
@@ -81,7 +82,7 @@ class ProfileScreen extends ConsumerWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
@@ -94,11 +95,57 @@ class ProfileScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Personal Information', style: AppTextStyles.label.copyWith(color: AppColors.textSlate, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
+                    Text('Personal Information', style: AppTextStyles.label.copyWith(color: Theme.of(context).textTheme.bodySmall?.color, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 16),
-                    _ProfileField(label: 'Full Name', value: user?.name ?? 'Unknown User'),
+                    _ProfileField(
+                      label: 'Full Name', 
+                      value: user?.name ?? 'Unknown User',
+                      onEdit: () {
+                        showDialog(
+                          context: context,
+                          builder: (ctx) {
+                            final controller = TextEditingController(text: user?.name ?? '');
+                            return AlertDialog(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              title: Text('Edit Name', style: AppTextStyles.headline.copyWith(fontSize: 18)),
+                              content: TextField(
+                                controller: controller,
+                                decoration: InputDecoration(
+                                  labelText: 'Full Name',
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: Text('Cancel', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Name update saved! (Stub)')),
+                                    );
+                                    Navigator.pop(ctx);
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryBlue,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  child: const Text('Save'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
                     const Divider(height: 32),
-                    _ProfileField(label: 'Email', value: user?.email ?? 'Unknown Email'),
+                    _ProfileField(
+                      label: 'Email', 
+                      value: user?.email ?? 'Unknown Email',
+                      showEditIcon: false,
+                    ),
                     const Divider(height: 32),
                     if (user?.phoneNumber == null || user!.phoneNumber!.isEmpty)
                       Row(
@@ -107,9 +154,9 @@ class ProfileScreen extends ConsumerWidget {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Phone number', style: TextStyle(color: AppColors.textSlate, fontSize: 13)),
+                              Text('Phone number', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 13)),
                               const SizedBox(height: 4),
-                              Text('Not linked', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSlate, fontStyle: FontStyle.italic)),
+                              Text('Not linked', style: AppTextStyles.bodyMedium.copyWith(color: Theme.of(context).textTheme.bodySmall?.color, fontStyle: FontStyle.italic)),
                             ],
                           ),
                           TextButton.icon(
@@ -133,7 +180,7 @@ class ProfileScreen extends ConsumerWidget {
                                     actions: [
                                       TextButton(
                                         onPressed: () => Navigator.pop(ctx),
-                                        child: Text('Cancel', style: TextStyle(color: AppColors.textSlate)),
+                                        child: Text('Cancel', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)),
                                       ),
                                       ElevatedButton(
                                         onPressed: () {
@@ -173,7 +220,7 @@ class ProfileScreen extends ConsumerWidget {
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
@@ -188,14 +235,14 @@ class ProfileScreen extends ConsumerWidget {
                     ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                       title: Text('Change Password', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500)),
-                      trailing: const Icon(Icons.chevron_right, color: AppColors.textSlate),
+                      trailing: Icon(Icons.chevron_right, color: Theme.of(context).textTheme.bodySmall?.color),
                       onTap: () {},
                     ),
                     const Divider(height: 1, indent: 20, endIndent: 20),
                     ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                       title: Text('Two-Factor Authentication', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500)),
-                      trailing: const Icon(Icons.chevron_right, color: AppColors.textSlate),
+                      trailing: Icon(Icons.chevron_right, color: Theme.of(context).textTheme.bodySmall?.color),
                       onTap: () {},
                     ),
                   ],
@@ -232,8 +279,15 @@ class ProfileScreen extends ConsumerWidget {
 class _ProfileField extends StatelessWidget {
   final String label;
   final String value;
+  final bool showEditIcon;
+  final VoidCallback? onEdit;
 
-  const _ProfileField({required this.label, required this.value});
+  const _ProfileField({
+    required this.label, 
+    required this.value,
+    this.showEditIcon = true,
+    this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -243,12 +297,18 @@ class _ProfileField extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(color: AppColors.textSlate, fontSize: 13)),
+            Text(label, style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 13)),
             const SizedBox(height: 4),
             Text(value, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500)),
           ],
         ),
-        Icon(Icons.edit_outlined, color: AppColors.primaryBlue.withOpacity(0.6), size: 20),
+        if (showEditIcon)
+          IconButton(
+            icon: Icon(Icons.edit_outlined, color: AppColors.primaryBlue.withOpacity(0.6), size: 20),
+            onPressed: onEdit,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
       ],
     );
   }

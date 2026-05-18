@@ -29,7 +29,7 @@ class _MainWebLayoutState extends State<MainWebLayout> {
         final isDesktop = constraints.maxWidth > 800;
 
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           appBar: _buildAppBar(isDesktop),
           drawer: isDesktop
               ? null
@@ -63,9 +63,9 @@ class _MainWebLayoutState extends State<MainWebLayout> {
 
   PreferredSizeWidget _buildAppBar(bool isDesktop) {
     return AppBar(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       elevation: 0,
-      iconTheme: const IconThemeData(color: AppColors.textDark),
+      iconTheme: IconThemeData(color: Theme.of(context).iconTheme.color),
       title: isDesktop
           ? null // Title is in sidebar for desktop
           : Row(
@@ -82,21 +82,21 @@ class _MainWebLayoutState extends State<MainWebLayout> {
             width: 200,
             margin: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(8),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                const Icon(Icons.search, size: 20, color: AppColors.textSlate),
+                Icon(Icons.search, size: 20, color: Theme.of(context).iconTheme.color?.withOpacity(0.5)),
                 const SizedBox(width: 8),
-                Text('Search...', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSlate)),
+                Text('Search...', style: AppTextStyles.bodyMedium.copyWith(color: Theme.of(context).textTheme.bodyMedium?.color)),
               ],
             ),
           )
         else
           IconButton(
-            icon: const Icon(Icons.search, color: AppColors.textSlate),
+            icon: Icon(Icons.search, color: Theme.of(context).iconTheme.color),
             onPressed: () {},
           ),
         const SizedBox(width: 16),

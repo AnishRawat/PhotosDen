@@ -173,6 +173,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     else if (index == 4) context.go('/wallet');
     else if (index == 5) context.go('/settings');
     else if (index == 6) context.go('/profile');
+    else if (index == 7) context.go('/library');
     else setState(() => _selectedIndex = index);
   }
 
@@ -183,10 +184,10 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
       onDestinationSelected: _onDestinationSelected,
       onLogout: () async {
          await _authService.logout();
-         if (mounted) context.go('/login');
+         if (mounted) context.go('/signup');
       },
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         floatingActionButton: _isSelectionMode
             ? FloatingActionButton.extended(
                 onPressed: _deleteSelectedAlbums,
@@ -213,7 +214,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                     onPressed: _toggleSelectionMode,
                     icon: Icon(
                       _isSelectionMode ? Icons.close : Icons.checklist, // Checklist icon for selection
-                      color: AppColors.textDark,
+                      color: Theme.of(context).iconTheme.color,
                     ),
                     tooltip: _isSelectionMode ? 'Cancel Selection' : 'Select Albums',
                     // Optional: Use a more prominent button style

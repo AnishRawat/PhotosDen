@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _isPasswordVisible = false;
+  bool _rememberMe = false;
 
   Future<void> _handleLogin() async {
     setState(() => _isLoading = true);
@@ -39,6 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await authService.login(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        rememberMeDays: _rememberMe ? 365 : 1,
       );
       
       if (mounted) GoRouter.of(context).go('/dashboard');
@@ -76,8 +78,9 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: AppColors.meshGradient,
+        decoration: BoxDecoration(
+          gradient: Theme.of(context).brightness == Brightness.light ? AppColors.meshGradient : null,
+          color: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).scaffoldBackgroundColor : null,
         ),
         child: Center(
           child: SingleChildScrollView(
@@ -86,6 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 450),
                 child: Card(
+                  color: Theme.of(context).colorScheme.surface,
                   elevation: 8,
                   shadowColor: Colors.black26,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -100,13 +104,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         Text(
                           'Welcome Back',
                           textAlign: TextAlign.center,
-                          style: AppTextStyles.headline,
+                          style: AppTextStyles.headline.copyWith(color: Theme.of(context).textTheme.headlineMedium?.color),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Sign in to your account',
                           textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSlate),
+                          style: AppTextStyles.bodyMedium.copyWith(color: Theme.of(context).textTheme.bodySmall?.color),
                         ),
                         const SizedBox(height: 32),
                         // Email Field
@@ -138,7 +142,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Checkbox(
+                              value: _rememberMe,
+                              onChanged: (val) => setState(() => _rememberMe = val ?? false),
+                              activeColor: AppColors.primaryBlue,
+                            ),
+                            Text('Remember Me', style: AppTextStyles.bodyMedium.copyWith(color: Theme.of(context).textTheme.bodyMedium?.color)),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: _isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(

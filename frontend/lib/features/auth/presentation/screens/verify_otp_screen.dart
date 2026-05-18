@@ -85,7 +85,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                     const SizedBox(height: 8),
                     Text('Enter the code sent to ${widget.email}', 
                       textAlign: TextAlign.center,
-                      style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSlate),
+                      style: AppTextStyles.bodyMedium.copyWith(color: Theme.of(context).textTheme.bodySmall?.color),
                     ),
                     const SizedBox(height: 32),
                     TextField(

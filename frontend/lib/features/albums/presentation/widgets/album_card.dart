@@ -19,7 +19,7 @@ class AlbumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         border: isSelected ? Border.all(color: AppColors.primaryBlue, width: 2) : null,
         boxShadow: [
@@ -43,7 +43,7 @@ class AlbumCard extends StatelessWidget {
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                            return Container(
-                            color: Colors.grey.shade200,
+                            color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200,
                             child: const Center(
                               child: Icon(Icons.broken_image, color: Colors.grey),
                             ),
@@ -73,7 +73,7 @@ class AlbumCard extends StatelessWidget {
                       '${album.photoCount} photos',
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSlate.withOpacity(0.7),
+                        color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
                       ),
                     ),
                   ],
@@ -87,7 +87,7 @@ class AlbumCard extends StatelessWidget {
               right: 8,
               child: Container(
                 decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primaryBlue : Colors.white.withOpacity(0.8),
+                  color: isSelected ? AppColors.primaryBlue : Theme.of(context).cardColor.withOpacity(0.8),
                   shape: BoxShape.circle,
                   border: Border.all(color: isSelected ? AppColors.primaryBlue : Colors.grey, width: 2),
                 ),

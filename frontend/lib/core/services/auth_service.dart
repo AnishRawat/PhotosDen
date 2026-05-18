@@ -90,7 +90,9 @@ class AuthService {
       if (data.containsKey('idToken')) {
         _idToken = data['idToken'];
         _currentUserId = userId;
-        await _storageService.storeSession(userId, _idToken!);
+        // Default expiry for signup auto-login (1 day)
+        final expiryTime = DateTime.now().add(const Duration(days: 1)).millisecondsSinceEpoch;
+        await _storageService.storeSession(userId, _idToken!, expiryMilliseconds: expiryTime);
       }
 
       return SignupResponse(
@@ -147,6 +149,7 @@ class AuthService {
   Future<LoginResponse> login({
     required String email,
     required String password,
+    int rememberMeDays = 1,
   }) async {
     try {
       // Step 1: Authenticate with backend
@@ -195,7 +198,8 @@ class AuthService {
       _idToken = data['idToken'];
       
       // Persist session
-      await _storageService.storeSession(userId, _idToken!);
+      final expiryTime = DateTime.now().add(Duration(days: rememberMeDays)).millisecondsSinceEpoch;
+      await _storageService.storeSession(userId, _idToken!, expiryMilliseconds: expiryTime);
 
       return LoginResponse(
         idToken: data['idToken'],
